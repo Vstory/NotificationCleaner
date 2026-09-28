@@ -801,7 +801,7 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                     Column(Modifier.weight(1f)) {
                         Text("导出诊断日志", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "版本/权限/岛链路状态快照 + logcat，经系统分享发送给开发者排查",
+                            "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -818,14 +818,15 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                                         file,
                                     )
                                     val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
+                                        // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
+                                        type = "application/zip"
                                         putExtra(android.content.Intent.EXTRA_STREAM, uri)
                                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     diagContext.startActivity(
                                         android.content.Intent.createChooser(send, "分享诊断日志"),
                                     )
-                                    "已导出: ${file.name}"
+                                    "已导出: ${file.name}（${file.length() / 1024}KB）"
                                 }.getOrElse { "导出失败: ${it.message}" }
                                 diagExporting = false
                                 diagMsg = msg

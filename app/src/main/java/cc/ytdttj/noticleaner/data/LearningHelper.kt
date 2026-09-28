@@ -94,6 +94,13 @@ object LearningHelper {
         }
         val base = modelRepo.baseModel() ?: return labels
         val delta = SpamTuner.fit(base, samples)
+        // Dev 9：重拟合落环形日志（MODEL 模块，覆盖 24 小时）——排查"升级后误杀"时，
+        // 需要知道何时用多少标注重拟合过（标注方向错误会在此步被放大）
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL,
+            "重拟合 delta：${samples.size} 条标注（广告 ${samples.count { it.spam }} / " +
+                "正常 ${samples.count { !it.spam }}）",
+        )
         modelRepo.applyDelta(delta)
         modelRepo.setTunedFingerprint(modelRepo.baseFingerprint())
 

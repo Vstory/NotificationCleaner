@@ -46,7 +46,10 @@ class ModuleLogProvider : ContentProvider() {
         if (values.getAsString(COL_DECISION) == HOOK_LOG_DECISION) {
             runCatching {
                 cc.ytdttj.noticleaner.diagnostics.RingLog.log(
-                    "[Hook:${values.getAsString(COL_PACKAGE).orEmpty()}] " +
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.HOOK,
+                    // 进程名（SystemUI / xmsf / system_server）保留在正文里——模块标签已由
+                    // HOOK 段承担，正文只补"来自哪个进程"，排查时按进程 grep 仍然可行
+                    "[${values.getAsString(COL_PACKAGE).orEmpty()}] " +
                         values.getAsString(COL_TITLE).orEmpty() +
                         (values.getAsString(COL_CONTENT)?.takeIf { it.isNotBlank() }?.let { " | $it" } ?: ""),
                 )

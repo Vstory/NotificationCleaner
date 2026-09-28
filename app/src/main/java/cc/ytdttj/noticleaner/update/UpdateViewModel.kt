@@ -99,6 +99,12 @@ class UpdateViewModel : ViewModel() {
                 result == null -> UpdateState.Error("检查失败：无法访问${if (ch == UpdateChannel.STABLE) " Gitee" else " GitHub"} 更新源")
                 result.release.versionCode > BuildConfig.VERSION_CODE -> {
                     lastCheckSource = result.source
+                    // Dev 9：更新检查结果落环形日志（UPDATE 模块，覆盖 24 小时）
+                    cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                        cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                        "发现新版本 ${result.release.versionName} (vc${result.release.versionCode}) " +
+                            "来源=${result.source} 当前=vc${BuildConfig.VERSION_CODE}",
+                    )
                     UpdateState.Available(result.release)
                 }
                 else -> UpdateState.UpToDate
@@ -131,9 +137,17 @@ class UpdateViewModel : ViewModel() {
                 val dest = File(appCtx.getExternalFilesDir(null), "update/$apkName")
                 val err = withContext(Dispatchers.IO) { directDownload(url, dest, release) }
                 if (err == null) {
+                    cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                        cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                        "APK 下载完成 $name → ${release.versionName}",
+                    )
                     _state.value = UpdateState.ReadyToInstall(release, dest)
                     return@launch
                 }
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                    "✗ APK 下载失败 [$name] $err",
+                )
                 android.util.Log.w("UpdateVM", "download failed [$name] $url: $err")
                 errors.add("$name $err")
                 dest.delete()

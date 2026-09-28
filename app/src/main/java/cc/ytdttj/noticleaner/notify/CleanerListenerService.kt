@@ -191,7 +191,9 @@ class CleanerListenerService : NotificationListenerService() {
         super.onListenerConnected()
         listenerConnected = true
         android.util.Log.i("NCWatch", "listener CONNECTED")
-        cc.ytdttj.noticleaner.diagnostics.RingLog.log("监听已连接")
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.NLS, "监听已连接",
+        )
         // 补撤：学习/拦截时监听未连接而残留的通知（1.1.8）
         if (pendingCancels.isNotEmpty()) {
             val keys = pendingCancels.toList()
@@ -215,7 +217,9 @@ class CleanerListenerService : NotificationListenerService() {
         // 1.1.11 修复：断线必须先落标志，否则看门狗用实例存在误判"已连接"，永远不会自愈重绑
         listenerConnected = false
         android.util.Log.w("NCWatch", "listener DISCONNECTED — requesting rebind")
-        cc.ytdttj.noticleaner.diagnostics.RingLog.log("✗ 监听断线 → 请求重绑")
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.NLS, "✗ 监听断线 → 请求重绑",
+        )
         // 1.4.0 Dev 15：断线即发提醒（悬浮 + 锁屏可见），仅在权限仍授予时提醒
         runCatching {
             if (isListenerEnabled(this)) ListenerAlertNotifier.notifyDown(this, "监听连接已断开")
@@ -227,7 +231,9 @@ class CleanerListenerService : NotificationListenerService() {
 
     override fun onDestroy() {
         android.util.Log.w("NCWatch", "listener onDestroy")
-        cc.ytdttj.noticleaner.diagnostics.RingLog.log("监听服务销毁")
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.NLS, "监听服务销毁",
+        )
         if (activeInstance === this) activeInstance = null
         appScope?.cancel()
         appScope = null
@@ -263,6 +269,7 @@ class CleanerListenerService : NotificationListenerService() {
         // 1.4.0 Dev 12：环形日志全量留痕——此前 release 下 NCWatch logcat 门控，
         // 事件无法事后归因（招行 09:31 上岛排查时 logcat/内存 trace 均已滚动丢失）
         cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.PIPE,
             "通知 pkg=${sbn.packageName} backfill=$fromBackfill title=${title.take(24)}",
         )
 
@@ -376,6 +383,7 @@ class CleanerListenerService : NotificationListenerService() {
 
         // 1.4.0 Dev 12：决策结果环形留痕（decision 常量可直接 grep：passed/whitelist/filtered_*）
         cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.PIPE,
             "决策 pkg=$pkg decision=$decision p=$probability title=${title.take(24)}",
         )
 
@@ -393,6 +401,7 @@ class CleanerListenerService : NotificationListenerService() {
             if (!ok) {
                 android.util.Log.w("NCWatch", "cancel failed, queued: $decision ${sbn.key.takeLast(12)}")
                 cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.PIPE,
                     "✗ 清除通知失败 decision=$decision key=${sbn.key.takeLast(12)}",
                 )
                 pendingCancels.add(sbn.key)

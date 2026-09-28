@@ -134,6 +134,12 @@ class ModelRepository(private val context: Context) {
         val b = loadBase() ?: return@withLock
         setEffective(b.withDelta(delta))
         deltaVersion.value = System.currentTimeMillis()
+        // Dev 9：模型变更落环形日志（诊断导出 MODEL 模块覆盖 24 小时——
+        // 排查"升级后误杀"时，delta 何时被重写是关键时间锚点）
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL,
+            "应用学习 delta：${delta.indices.size} 项修正（epoch=${modelEpoch}）",
+        )
     }
 
     /** 重置：删除学习修正，回到内置基线（标注由调用方决定是否清空）。 */
@@ -147,6 +153,9 @@ class ModelRepository(private val context: Context) {
         }
         setEffective(loadBase())
         deltaVersion.value = 0L
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL, "重置为内置基线（delta/指纹已删除）",
+        )
     }
 
     private fun readDelta(): SpamDelta? {
@@ -164,8 +173,19 @@ class ModelRepository(private val context: Context) {
                 ?.getResourceAsStream("model/model.bin")
                 ?.use { SpamModel.load(it) }
                 ?.also { base = it }
+        }.onSuccess { m ->
+            if (m != null) {
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL,
+                    "内置模型加载成功 fingerprint=${m.fingerprint}",
+                )
+            }
         }.onFailure {
             android.util.Log.e("ModelRepository", "内置模型加载失败", it)
+            cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL,
+                "✗ 内置模型加载失败: ${it.message}（打分将全部按 0.0 放行）",
+            )
         }.getOrNull()
     }
 

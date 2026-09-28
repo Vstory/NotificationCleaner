@@ -69,7 +69,10 @@ class WatchdogReceiver : BroadcastReceiver() {
         val connected = CleanerListenerService.isListenerConnected()
         Log.i(TAG, "fired enabled=$enabled connected=$connected uptime=${SystemClock.elapsedRealtime()}")
         // 1.4.0 Dev 12：环形留痕（心跳 30s/次，相邻相同自动折叠为 ×N 摘要，不刷爆配额）
-        cc.ytdttj.noticleaner.diagnostics.RingLog.log("看门狗心跳 enabled=$enabled connected=$connected")
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+            "看门狗心跳 enabled=$enabled connected=$connected",
+        )
 
         // ── 2.0.1 Dev 2 重构（修复崩溃死循环）────────────────────────────────────
         // 旧实现：Shizuku 修复分支和 purgeExpired 各调一次 goAsync —— BroadcastReceiver
@@ -107,6 +110,7 @@ class WatchdogReceiver : BroadcastReceiver() {
                 )
             }
             cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
                 "✗ 看门狗：监听断连 → 请求重绑（连续第 ${consecutiveDisconnected + 1} 次）",
             )
             // 1.1.14：尝试重启保活前台服务——恢复进程重要性并抖掉可能卡死的绑定
@@ -126,7 +130,9 @@ class WatchdogReceiver : BroadcastReceiver() {
                 lastRepairAt = now
                 consecutiveDisconnected = 0
                 Log.i(TAG, "listener still disconnected → shizuku listener repair")
-                cc.ytdttj.noticleaner.diagnostics.RingLog.log("看门狗：Shizuku 强制修复监听")
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP, "看门狗：Shizuku 强制修复监听",
+                )
             }
             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                 try {
@@ -138,14 +144,21 @@ class WatchdogReceiver : BroadcastReceiver() {
                             val diag = log.substringAfter("---- 系统侧诊断", "")
                             if (diag.isNotBlank()) {
                                 val trimmed = diag.lineSequence().take(45).joinToString("\n")
-                                cc.ytdttj.noticleaner.diagnostics.RingLog.log("系统侧诊断\n$trimmed")
+                                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                                    cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                                    "系统侧诊断\n$trimmed",
+                                )
                             }
                             cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                                cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
                                 "看门狗：Shizuku 修复完成 → ${log.lineSequence().firstOrNull()?.take(80)}",
                             )
                         }.onFailure { t ->
                             Log.w(TAG, "listener repair failed: $t")
-                            cc.ytdttj.noticleaner.diagnostics.RingLog.log("✗ 看门狗：Shizuku 修复失败 $t")
+                            cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                                cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                                "✗ 看门狗：Shizuku 修复失败 $t",
+                            )
                         }
                     }
                     // 1.2.0（ImprovePlan P0-2）：顺带清理过期通知（Dev 6：保留天数可调）
