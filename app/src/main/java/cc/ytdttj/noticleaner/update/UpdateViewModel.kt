@@ -227,8 +227,15 @@ class UpdateViewModel : ViewModel() {
                             }
                         }
                         val actual = md.digest().joinToString("") { "%02x".format(it) }
+                        // 2.0.1 Dev 10（P1-6）：fail-closed——更新源未声明 sha256 一律拒绝安装。
+                        // 旧实现 `if (!expected.isNullOrBlank() && actual != expected)`，
+                        // 即 latest*.json 不带 sha256 字段时**完全不校验**就把 APK 交给安装器，
+                        // 最后一道完整性防线形同虚设（中间人只要删掉该字段即可）。
                         val expected = release.sha256?.lowercase()
-                        if (!expected.isNullOrBlank() && actual != expected) {
+                        if (expected.isNullOrBlank()) {
+                            return "更新源未声明 sha256，拒绝下载（完整性无法校验）"
+                        }
+                        if (actual != expected) {
                             return "sha256 不匹配（响应被篡改或 CDN 污染）"
                         }
                         if (dest.exists()) dest.delete()

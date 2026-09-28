@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,10 +35,21 @@ fun UpdatePromptDialog(vm: UpdateViewModel, onDismiss: () -> Unit) {
             onDismissRequest = { vm.reset(); onDismiss() },
             title = { Text("发现新版本 v${s.release.versionName}") },
             text = {
-                Text(
-                    s.release.notes.ifBlank { "已发布新版本，是否立即下载更新？" },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                // 2.0.1 Dev 10：更新日志（notes，多行）可能很长——旧实现直接堆一个 Text，
+                // 超长时把「立即更新/关闭」按钮顶出屏幕且**无法滚动查看**。
+                // 现在限高 320dp + 纵向滚动：内容不超长时与普通弹窗无差别，超长时可滚动看全。
+                val scroll = rememberScrollState()
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(scroll),
+                ) {
+                    Text(
+                        s.release.notes.ifBlank { "已发布新版本，是否立即下载更新？" },
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             },
             confirmButton = { TextButton(onClick = { vm.startDownload(s.release) }) { Text("立即更新") } },
             dismissButton = { TextButton(onClick = { vm.reset(); onDismiss() }) { Text("关闭") } },

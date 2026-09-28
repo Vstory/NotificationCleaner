@@ -107,6 +107,24 @@ class PaymentExtractorTest {
         assertNull(extract("扣款通知", "手续费扣款0.00元"))
     }
 
+    // ---- Dev 10（P1-2 回归）：零额只能跳过"这一笔"，不能让整条通知提取失败 ----
+
+    @Test
+    fun `主金额后的零额手续费不再丢弃整条`() {
+        // 旧实现：循环内 `if (isZero) return null` → 主金额 25.00 已命中，
+        // 扫到"手续费0.00元"整条返回 null → 银行扣款不上岛且无提示
+        val p = extract("支付成功", "支付¥25.00（手续费0.00元）")
+        assertNotNull(p)
+        assertEquals("25.00", p!!.amountText)
+    }
+
+    @Test
+    fun `零额在前真金额在后仍取真金额`() {
+        val p = extract("支付成功", "优惠0.00元，实付25.00元")
+        assertNotNull(p)
+        assertEquals("25.00", p!!.amountText)
+    }
+
     @Test
     fun `无金额通知`() {
         assertNull(extract("动账提醒", "您有一笔交易请查看详情"))

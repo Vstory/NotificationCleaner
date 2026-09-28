@@ -128,7 +128,11 @@ object PaymentExtractor {
             val currency = if (prefix.isNotEmpty()) tokenCurrency(prefix) else Currency.CNY
             val raw = if (prefix.isNotEmpty()) m.groupValues[2] else m.groupValues[3]
             val amount = normalize(raw) ?: continue
-            if (isZero(amount)) return null // "手续费0.00元" 之类的零额通知
+            // 2.0.1 Dev 10（P1-2）：零额只跳过**这一笔**，不再让整条通知提取失败。
+            // 旧实现在此 `return null`——"支付¥25.00（手续费0.00元）"这类文案主金额已命中，
+            // 扫描到后面的零额时整条被判失败 → 银行扣款不上岛且无任何提示。
+            // 末尾 `main ?: return null` 已覆盖"全篇只有零额"的语义（如"手续费0.00元"）。
+            if (isZero(amount)) continue
             if (main == null) {
                 main = currency to amount
                 mainRange = m.range

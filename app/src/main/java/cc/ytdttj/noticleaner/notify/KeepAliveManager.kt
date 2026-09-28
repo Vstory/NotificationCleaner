@@ -178,14 +178,9 @@ object RootExecutor : ShellExecutor {
     override suspend fun exec(cmd: String): String = kotlinx.coroutines.withContext(
         kotlinx.coroutines.Dispatchers.IO,
     ) {
-        val p = ProcessBuilder("su", "-c", cmd).start()
-        val out = p.inputStream.bufferedReader().use { it.readText() }
-        val err = p.errorStream.bufferedReader().use { it.readText() }
-        p.waitFor()
-        buildString {
-            if (out.isNotBlank()) append(out.trim())
-            if (err.isNotBlank()) append(if (isEmpty()) "" else "\n").append("ERR: ").append(err.trim())
-        }
+        // Dev 10（P1-4）：合并 stderr 到 stdout（单一流消费，杜绝"stderr 管道满 → 父子互等"死锁）
+        val p = ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start()
+        readProcess(p, cmd)
     }
 }
 
@@ -202,13 +197,48 @@ object ShizukuExecutor : ShellExecutor {
         )
         m.isAccessible = true
         val p = m.invoke(null, arrayOf("sh", "-c", cmd), null, null) as Process
-        val out = p.inputStream.bufferedReader().use { it.readText() }
-        val err = p.errorStream.bufferedReader().use { it.readText() }
-        p.waitFor()
-        buildString {
-            if (out.isNotBlank()) append(out.trim())
-            if (err.isNotBlank()) append(if (isEmpty()) "" else "\n").append("ERR: ").append(err.trim())
+        readProcess(p, cmd)
+    }
+}
+
+/**
+ * 读取进程输出（Dev 10，P1-4）：**带超时** + **stderr 并发排空**。
+ *
+ * 旧实现两处致命缺陷：
+ * 1. `waitFor()` 无超时——首次 `su` 弹授权框、或命令本身挂死时 `readText()` 无限期阻塞，
+ *    调用方（看门狗 goAsync 协程）永不结束 → 广播超时、IO 线程逐渐耗尽、修复按钮全卡死；
+ * 2. 先读完 stdout 再读 stderr——stderr 填满管道缓冲（dumpsys 大输出很常见）而 stdout 未
+ *    EOF 时，子进程写不下、父进程读不完 → **永久死锁**。
+ *
+ * 现在：stderr 交给独立守护线程排空，主线程只读 stdout，[EXEC_TIMEOUT_SEC] 到点即
+ * `destroyForcibly()` 并返回超时提示（调用方按失败处理，绝不无限等待）。
+ */
+private const val EXEC_TIMEOUT_SEC = 10L
+
+private fun readProcess(p: Process, cmd: String): String {
+    val errBuf = StringBuilder()
+    val errThread = Thread({
+        runCatching { p.errorStream.bufferedReader().use { errBuf.append(it.readText()) } }
+    }, "shell-stderr").apply { isDaemon = true; start() }
+    val out = try {
+        p.inputStream.bufferedReader().use { it.readText() }
+    } catch (t: Throwable) {
+        "读取输出失败: $t"
+    }
+    val finished = runCatching { p.waitFor(EXEC_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS) }
+        .getOrDefault(false)
+    if (!finished) {
+        runCatching { p.destroyForcibly() }
+        errThread.join(500)
+        return buildString {
+            append("执行超时（${EXEC_TIMEOUT_SEC}s，已强杀）：$cmd")
+            if (out.isNotBlank()) append("\n").append(out.trim().takeLast(500))
         }
+    }
+    errThread.join(1_000)
+    return buildString {
+        if (out.isNotBlank()) append(out.trim())
+        if (errBuf.isNotBlank()) append(if (isEmpty()) "" else "\n").append("ERR: ").append(errBuf.trim())
     }
 }
 

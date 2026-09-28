@@ -87,11 +87,12 @@ class ModuleConfigSync(
         val service = xposedService ?: return@withContext
         pushMutex.withLock {
             runCatching {
-                val deltaFile = java.io.File(context.filesDir, "model/spam_delta.bin")
-                if (!deltaFile.exists()) return@runCatching
+                // Dev 10（P1-3）：经 ModelRepository 在同一锁域取快照，
+                // 不再直接读文件（旧写法与 applyDelta 的写入锁不共享 → 可能推撕裂文件给模块）
+                val bytes = ServiceLocator.modelRepo.deltaSnapshot() ?: return@runCatching
                 service.openRemoteFile(ModuleConfigCodec.DELTA_REMOTE_FILE)?.use { pfd ->
                     ParcelFileDescriptor.AutoCloseOutputStream(pfd).use { out ->
-                        out.write(deltaFile.readBytes())
+                        out.write(bytes)
                     }
                 }
             }.onFailure {

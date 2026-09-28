@@ -129,7 +129,29 @@ class ModelRepository(private val context: Context) {
     suspend fun applyDelta(delta: SpamDelta) = mutex.withLock {
         withContext(Dispatchers.IO) {
             deltaFile.parentFile?.mkdirs()
-            if (delta.isEmpty) deltaFile.delete() else deltaFile.writeBytes(delta.encode())
+            if (delta.isEmpty) {
+                deltaFile.delete()
+            } else {
+                // Dev 10（P1-3）：tmp + fsync + rename 原子替换。
+                // 旧实现 `writeBytes` 直接截断重写：写入中途进程被杀/磁盘满 → 文件损坏，
+                // 下次启动 readDelta() 解码失败被 get() 静默吞掉 → **用户全部学习成果无提示丢失**。
+                val tmp = File(deltaFile.parentFile, deltaFile.name + ".tmp")
+                try {
+                    val bytes = delta.encode()
+                    java.io.FileOutputStream(tmp).use { out ->
+                        out.write(bytes)
+                        out.fd.sync() // rename 前强制落盘，避免"rename 成功但内容未落盘"
+                    }
+                    if (!tmp.renameTo(deltaFile)) {
+                        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                            cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL,
+                            "✗ delta 原子替换失败（rename 返回 false），本次学习未落盘",
+                        )
+                    }
+                } finally {
+                    if (tmp.exists()) tmp.delete()
+                }
+            }
         }
         val b = loadBase() ?: return@withLock
         setEffective(b.withDelta(delta))
@@ -156,6 +178,19 @@ class ModelRepository(private val context: Context) {
         cc.ytdttj.noticleaner.diagnostics.RingLog.log(
             cc.ytdttj.noticleaner.diagnostics.LogModules.MODEL, "重置为内置基线（delta/指纹已删除）",
         )
+    }
+
+    /**
+     * 推送给 LSPosed 模块的 delta 二进制快照（Dev 10，P1-3）。
+     *
+     * 必须在 [mutex] 内读取——旧实现里 ModuleConfigSync.pushDelta 用独立锁直接
+     * `deltaFile.readBytes()`，与 [applyDelta] 的写入锁不共享，理论上能读到撕裂文件。
+     * 现在读写统一收拢到本仓库的单一锁域；文件不存在返回 null。
+     */
+    suspend fun deltaSnapshot(): ByteArray? = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (!deltaFile.exists()) null else runCatching { deltaFile.readBytes() }.getOrNull()
+        }
     }
 
     private fun readDelta(): SpamDelta? {

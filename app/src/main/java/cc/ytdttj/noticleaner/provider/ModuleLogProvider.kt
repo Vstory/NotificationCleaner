@@ -16,7 +16,8 @@ import kotlinx.coroutines.runBlocking
  * 模块拦截记录回流入口（1.2.1）：
  * LSPosed 模块在 system_server 内拦截的通知经此写入历史库——
  * 入队前拦截意味着 NLS 收不到这些通知，回流保证历史完整 + 可继续学习标注。
- * exported=true（system_server 访问需要），调用方仅接受 SYSTEM_UID 与自身（对齐 ref/Notice）。
+ * exported=true（system_server 访问需要），调用方仅接受 SYSTEM_UID 与自身（对齐 ref/Notice）；
+ * 例外：HOOK_LOG 决策额外接受白名单进程（SystemUI / xmsf，Dev 10 修复，见 [HOOK_LOG_DECISION]）。
  */
 class ModuleLogProvider : ContentProvider() {
 
@@ -24,13 +25,24 @@ class ModuleLogProvider : ContentProvider() {
 
     override fun insert(uri: Uri, values: ContentValues?): Uri? {
         val uid = Binder.getCallingUid()
-        if (uid != Process.SYSTEM_UID && uid != Process.myUid()) return null
         values ?: return null
         val ctx = context ?: return null
+        // Dev 10（P2-36 升级修复）：HOOK_LOG 通道单独判定——SystemUI(uid 101xx) 与
+        // xmsf(普通 uid) 都不是 SYSTEM_UID(1000)，旧校验把它们**静默拒绝**了，
+        // Dev 8 宣称的"Hook 事件回流"实际零产出（用户导出日志里 [Hook: 行 = 0 条实证）。
+        // HOOK_LOG 不入通知历史库、只写环形日志（有折叠 + 每模块配额），
+        // 因此可以按包名白名单放宽；其余决策维持原有严格校验。
+        val decision = values.getAsString(COL_DECISION).orEmpty()
+        val hookChannel = decision == HOOK_LOG_DECISION
+        if (uid != Process.SYSTEM_UID && uid != Process.myUid() &&
+            !(hookChannel && isHookLogUidAllowed(ctx, uid))
+        ) {
+            return null
+        }
 
         // Dev 5：LSPosed 模块心跳（decision=LSP_ALIVE）——不入历史库，
         // 写独立偏好文件供 KeepAliveManager.isLspActive() 作"模块真实在跑"的铁证
-        if (values.getAsString(COL_DECISION) == LSP_ALIVE_DECISION) {
+        if (decision == LSP_ALIVE_DECISION) {
             runCatching {
                 ctx.getSharedPreferences(LSP_HEARTBEAT_PREFS, Context.MODE_PRIVATE)
                     .edit()
@@ -43,7 +55,7 @@ class ModuleLogProvider : ContentProvider() {
 
         // Dev 8：Hook 端日志回流（decision=HOOK_LOG）——SystemUI/xmsf/system_server
         // 内的关键事件（岛校验/认证/拦截）写环形日志，随诊断导出覆盖 24 小时
-        if (values.getAsString(COL_DECISION) == HOOK_LOG_DECISION) {
+        if (hookChannel) {
             runCatching {
                 cc.ytdttj.noticleaner.diagnostics.RingLog.log(
                     cc.ytdttj.noticleaner.diagnostics.LogModules.HOOK,
@@ -90,6 +102,24 @@ class ModuleLogProvider : ContentProvider() {
         return uri.buildUpon().appendPath(entity.key).build()
     }
 
+    /**
+     * HOOK_LOG 通道的 uid 白名单判定（带缓存）。
+     *
+     * `getPackagesForUid` 是一次 IPC，而 Hook 事件可能高频（每次上岛/认证都打点），
+     * 故按 uid 缓存结果（含 false——否则任何第三方应用都能用高频调用反复触发 IPC）。
+     * uid 只在应用重装/多用户切换时变化；缓存上限 [HOOK_UID_CACHE_MAX] 条，超出即整体清空。
+     */
+    private fun isHookLogUidAllowed(ctx: Context, uid: Int): Boolean {
+        hookUidCache[uid]?.let { return it }
+        val ok = runCatching {
+            val pkgs = ctx.packageManager.getPackagesForUid(uid)
+            pkgs?.any { it in HOOK_LOG_ALLOWED_PACKAGES } == true
+        }.getOrDefault(false)
+        if (hookUidCache.size > HOOK_UID_CACHE_MAX) hookUidCache.clear()
+        hookUidCache[uid] = ok
+        return ok
+    }
+
     private fun appName(ctx: Context, pkg: String): String = runCatching {
         ctx.packageManager.getApplicationLabel(
             ctx.packageManager.getApplicationInfo(pkg, 0),
@@ -111,6 +141,19 @@ class ModuleLogProvider : ContentProvider() {
 
         /** Dev 8：Hook 端日志回流标记（SystemUI/xmsf 进程关键事件 → RingLog，不入库） */
         const val HOOK_LOG_DECISION = "HOOK_LOG"
+
+        /**
+         * Dev 10：HOOK_LOG 通道额外放行的进程包名。
+         * 这些进程内的 hook（IslandUnlockFocusHook / XmsfUnlockAuthHook）以**被注入进程的 uid**
+         * 提交（SystemUI 101xx、xmsf 普通 uid），不是 SYSTEM_UID(1000)——只放行这两个已知
+         * 系统/厂商进程，且仅限 HOOK_LOG 决策（不入历史库、只进有配额的环形日志）。
+         */
+        private val HOOK_LOG_ALLOWED_PACKAGES = setOf("com.android.systemui", "com.xiaomi.xmsf")
+
+        /** uid → 是否允许走 HOOK_LOG 通道（见 [isHookLogUidAllowed]） */
+        private val hookUidCache = java.util.concurrent.ConcurrentHashMap<Int, Boolean>()
+
+        private const val HOOK_UID_CACHE_MAX = 64
 
         const val COL_PACKAGE = "package"
         const val COL_CHANNEL = "channel"

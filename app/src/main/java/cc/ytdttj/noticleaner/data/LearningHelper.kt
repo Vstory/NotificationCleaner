@@ -2,6 +2,7 @@ package cc.ytdttj.noticleaner.data
 
 import androidx.room.withTransaction
 import cc.ytdttj.noticleaner.ServiceLocator
+import kotlinx.coroutines.sync.withLock
 import cc.ytdttj.noticleaner.ai.FeatureHasher
 import cc.ytdttj.noticleaner.ai.SpamTuner
 import cc.ytdttj.noticleaner.data.db.DECISION_MANUAL_MARKED_AD
@@ -17,6 +18,9 @@ import cc.ytdttj.noticleaner.data.db.NotificationEntity
  * base 权重永不被改写，重拟合结果只落在 delta 上。
  */
 object LearningHelper {
+
+    /** 重拟合串行锁（Dev 10，P1-8）：全进程只有一个 refit 在跑 */
+    private val refitMutex = kotlinx.coroutines.sync.Mutex()
 
     /**
      * 批量重学习结果统计：
@@ -77,7 +81,18 @@ object LearningHelper {
      *
      * @return 重算后的已学习行；无标注或模型不可用时返回空/原列表。
      */
-    suspend fun refit(dao: NotificationDao, modelRepo: ModelRepository): List<NotificationEntity> {
+    suspend fun refit(dao: NotificationDao, modelRepo: ModelRepository): List<NotificationEntity> =
+        refitMutex.withLock { refitLocked(dao, modelRepo) }
+
+    /**
+     * 重拟合本体（持锁执行）。
+     *
+     * 锁的作用（2.0.1 Dev 10，P1-8）：历史页单条 learn/unlearn 每次都 `launch` 新协程，
+     * 快速连点会并发跑多个"读全部标注 → 60 epoch 全量拟合 → 写同一 delta 文件"，
+     * 叠加非原子写时损坏概率显著放大。串行化后同一时刻只有一个 refit，
+     * 且后续的重复拟合读到的是最新标注（结果收敛一致）。
+     */
+    private suspend fun refitLocked(dao: NotificationDao, modelRepo: ModelRepository): List<NotificationEntity> {
         val labels = dao.listLearnedOnce()
         if (labels.isEmpty()) return emptyList()
         val samples = labels.map {

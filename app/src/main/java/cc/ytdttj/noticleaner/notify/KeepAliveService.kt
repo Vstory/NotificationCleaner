@@ -33,9 +33,33 @@ class KeepAliveService : Service() {
         private const val CHANNEL_ID = "keepalive"
         private const val NOTIF_ID = 1001
 
+        /**
+         * Dev 10（P1-9）：监听强制修复的触发 action。
+         * 修复流程（6+ 条 shell + dumpsys）此前跑在 WatchdogReceiver 的 goAsync 协程里，
+         * 极易超出广播 10s 预算（叠加旧的无超时 exec 更是必然超时）→ 系统按接收器超时处理，
+         * 后台进程可能被整杀。现在由本常驻服务执行，广播只负责"下单"。
+         */
+        private const val ACTION_REPAIR = "cc.ytdttj.noticleaner.action.REPAIR"
+
         fun start(context: Context) {
             runCatching {
                 context.startForegroundService(Intent(context, KeepAliveService::class.java))
+            }
+        }
+
+        /** 触发一次监听强制修复（服务未运行则顺带拉起） */
+        fun startRepair(context: Context) {
+            runCatching {
+                val intent = Intent(context, KeepAliveService::class.java).setAction(ACTION_REPAIR)
+                // 服务已在运行 → 普通 startService 即可（不会触发后台 FGS 启动限制）；
+                // 未运行时 startForegroundService 拉起（onCreate 内 5s 内会 startForeground）
+                context.startForegroundService(intent)
+            }.onFailure {
+                runCatching {
+                    context.startService(
+                        Intent(context, KeepAliveService::class.java).setAction(ACTION_REPAIR),
+                    )
+                }
             }
         }
     }
@@ -146,7 +170,58 @@ class KeepAliveService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_REPAIR) runRepairAsync()
+        return START_STICKY
+    }
+
+    /**
+     * 监听强制修复（Dev 10，P1-9）：在本服务的作用域内执行，不受广播 goAsync 10s 预算约束。
+     * 结果（含系统侧诊断）写入环形日志 KEEP 模块，随诊断导出覆盖 24 小时。
+     */
+    private fun runRepairAsync() {
+        val s = scope ?: return
+        s.launch(Dispatchers.IO) {
+            val shizukuUsable = runCatching {
+                rikka.shizuku.Shizuku.pingBinder() &&
+                    rikka.shizuku.Shizuku.checkSelfPermission() ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            }.getOrDefault(false)
+            if (!shizukuUsable) {
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                    "✗ 看门狗：Shizuku 不可用，跳过强制修复",
+                )
+                return@launch
+            }
+            cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                "看门狗：Shizuku 强制修复监听（KeepAliveService 内执行，不受广播预算限制）",
+            )
+            runCatching {
+                val log = ListenerRepair.repair(ShizukuExecutor)
+                android.util.Log.i("NCWatch", "listener repair done:\n$log")
+                // 2.0.1 Dev 3：系统侧诊断段进环形日志（导出可见，logcat 易滚动）
+                val diag = log.substringAfter("---- 系统侧诊断", "")
+                if (diag.isNotBlank()) {
+                    val trimmed = diag.lineSequence().take(45).joinToString("\n")
+                    cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                        cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP, "系统侧诊断\n$trimmed",
+                    )
+                }
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                    "看门狗：Shizuku 修复完成 → ${log.lineSequence().firstOrNull()?.take(80)}",
+                )
+            }.onFailure { t ->
+                android.util.Log.w("NCWatch", "listener repair failed: $t")
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                    "✗ 看门狗：Shizuku 修复失败 $t",
+                )
+            }
+        }
+    }
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(screenReceiver) }
