@@ -161,29 +161,60 @@ internal class FilterEngine {
      * 缓存于 companion；重建在单线程 Executor 上异步执行，`model` @Volatile 原子换引用，
      * 重建期间旧模型继续可用，语义为"延迟生效"）。
      */
-    private fun refreshModel(api: io.github.libxposed.api.XposedInterface?) {
+    private fun refreshModel(api: io.github.libxposed.api.XposedInterface?, attempt: Int = 0) {
         val version = config.deltaVersion
         if (version == loadedDeltaVersion && model != null) return
-        rebuildExecutor.execute {
-            runCatching {
-                if (version == loadedDeltaVersion && model != null) return@runCatching
-                val base = loadBaseModel()
-                var next = base
-                if (base != null && version != 0L && api != null) {
-                    runCatching {
-                        api.openRemoteFile(ModuleConfigCodec.DELTA_REMOTE_FILE)?.use { pfd ->
-                            val delta = SpamDelta.decode(android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd))
+        rebuildExecutor.execute { rebuildModel(api, version, attempt) }
+    }
+
+    /** 模型重建本体（rebuildExecutor 单线程）；[version] 为触发本次重建时看到的版本号 */
+    private fun rebuildModel(api: io.github.libxposed.api.XposedInterface?, version: Long, attempt: Int) {
+        runCatching {
+            if (version == loadedDeltaVersion && model != null) return@runCatching
+            val base = loadBaseModel()
+            var next = base
+            // 2.0.1 Dev 11：只有**真正读到并应用了** delta 才算这个版本加载完成。
+            // 旧实现无论 openRemoteFile 返回 null（文件还没被 APP 写入——见
+            // ModuleConfigSync 的 TOCTOU）还是解码失败，都把版本号登记为已加载，
+            // 于是模块端就此停在 base 模型上，用户"学习为正常"后仍被按广告拦截。
+            var deltaApplied = false
+            if (base != null && version != 0L && api != null) {
+                runCatching {
+                    val pfd = api.openRemoteFile(ModuleConfigCodec.DELTA_REMOTE_FILE)
+                    if (pfd == null) {
+                        android.util.Log.w("NCWatch", "module delta file unavailable (v$version)")
+                    } else {
+                        pfd.use {
+                            val delta = SpamDelta.decode(
+                                android.os.ParcelFileDescriptor.AutoCloseInputStream(it),
+                            )
                             if (!delta.isEmpty) {
                                 next = base.withDelta(delta)
-                                android.util.Log.i("NCWatch", "module delta v$version loaded: ${delta.indices.size} weights")
+                                deltaApplied = true
+                                android.util.Log.i(
+                                    "NCWatch",
+                                    "module delta v$version loaded: ${delta.indices.size} weights",
+                                )
                             }
                         }
-                    }.onFailure { android.util.Log.w("NCWatch", "module delta load failed: $it") }
-                }
-                model = next
+                    }
+                }.onFailure { android.util.Log.w("NCWatch", "module delta load failed: $it") }
+            }
+            model = next
+            if (version == 0L || deltaApplied) {
                 loadedDeltaVersion = version
-            }.onFailure { android.util.Log.w("NCWatch", "module model rebuild failed: $it") }
-        }
+            } else if (attempt < DELTA_RETRY_MAX) {
+                // 未拿到 delta：退避重试（APP 侧可能还在写文件）。
+                // 关键：不登记版本号，保证重试仍会触发；重试以**当前**版本号为准
+                //（等待期间用户可能又学了一条）
+                val delay = DELTA_RETRY_DELAYS_MS[attempt.coerceIn(0, DELTA_RETRY_DELAYS_MS.lastIndex)]
+                android.util.Log.w("NCWatch", "module delta v$version not applied, retry in ${delay}ms")
+                Thread.sleep(delay)
+                rebuildModel(api, config.deltaVersion, attempt + 1)
+            } else {
+                android.util.Log.w("NCWatch", "module delta v$version gave up after $DELTA_RETRY_MAX retries")
+            }
+        }.onFailure { android.util.Log.w("NCWatch", "module model rebuild failed: $it") }
     }
 
     /** base 模型只加载一次；加载失败置负极标记，避免每次学习事件都重试 0.5MB IO。 */
@@ -239,6 +270,10 @@ internal class FilterEngine {
     companion object {
         private const val SELF_PKG = "cc.ytdttj.noticleaner"
         private const val MODEL_RESOURCE = "model/model.bin"
+
+        /** Dev 11：delta 未就绪时的退避重试（最多 3 次：1s / 3s / 8s） */
+        private const val DELTA_RETRY_MAX = 3
+        private val DELTA_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L, 8_000L)
 
         // P0-3：base 模型进程级缓存（system_server 内 class/model 唯一，缓存安全）
         @Volatile private var cachedBase: SpamModel? = null

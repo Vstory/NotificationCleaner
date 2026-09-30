@@ -166,9 +166,22 @@ class HistoryViewModel(
             val updated = refit()
             _selected.value = updated.firstOrNull { it.id == n.id }
                 ?: n.copy(learned = true, learnLabel = label, learnCount = if (sameDirection) n.learnCount + 1 else 1)
+            // 2.0.1 Dev 11：学为"正常"时若该通知仍命中用户自定义规则，规则会继续拦截
+            //（规则判定优先于 AI 打分）——不提示的话用户只会觉得"学了没用"
+            val hitRule = if (label == 0) {
+                runCatching {
+                    cc.ytdttj.noticleaner.ServiceLocator.ruleEngine
+                        .match(n.packageName, n.title, n.content)
+                }.getOrNull()
+            } else {
+                null
+            }
             _toast.value = when {
                 label == 1 && sameDirection -> "已重复学习（第 ${n.learnCount + 1} 次），权重已加强"
                 label == 1 -> "已学习为广告通知并清除"
+                hitRule != null ->
+                    "已学习为正常通知；但该通知命中规则「${hitRule.appName}｜${hitRule.keyword.ifBlank { "条件规则" }}」，" +
+                        "规则优先于学习，仍会被拦截——请到「规则」页调整或删除该规则"
                 else -> "已学习为正常通知"
             }
         }

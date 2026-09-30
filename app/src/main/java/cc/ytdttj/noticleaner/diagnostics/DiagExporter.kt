@@ -313,11 +313,15 @@ object DiagExporter {
     /** 最近 24 小时通知历史（CSV，可直接用表格软件打开） */
     private suspend fun recentNotificationsCsv(windowStart: Long): String {
         val rows = cc.ytdttj.noticleaner.ServiceLocator.db.notificationDao().listSince(windowStart)
-        if (rows.isEmpty()) return "时间,应用,包名,标题,决策,AI率,已学习\n（最近 24 小时无通知记录）\n"
+        // Dev 11：UTF-8 BOM——CSV 是纯 UTF-8，Excel/WPS 在中文 Windows 上按 GBK 打开即乱码
+        //（历史通知 CSV 导出 HistoryCsvExporter 一直写 BOM，Dev 9 新增的本文件漏了）
+        if (rows.isEmpty()) return "\ufeff时间,应用,包名,标题,决策,AI率,已学习\r\n（最近 24 小时无通知记录）\r\n"
         return buildString {
-            appendLine("时间,应用,包名,标题,决策,AI率,已学习")
+            append("\ufeff")
+            append("时间,应用,包名,标题,决策,AI率,已学习\r\n")
             for (n in rows) {
-                appendLine(
+                // CRLF：与表头一致，Excel/WPS 打开不串行
+                append(
                     listOf(
                         shortFmt.format(Date(n.postTime)),
                         n.appName,
@@ -328,6 +332,7 @@ object DiagExporter {
                         if (n.learned) "是(${if (n.learnLabel == 1) "广告" else "正常"})" else "否",
                     ).joinToString(",") { csv(it) },
                 )
+                append("\r\n")
             }
         }
     }
