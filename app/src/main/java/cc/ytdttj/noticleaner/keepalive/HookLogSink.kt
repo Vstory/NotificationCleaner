@@ -30,20 +30,38 @@ object HookLogSink {
         }
     }
 
+    /** 因拿不到 Context 而丢弃的事件数（Dev 12：此前静默丢弃，排查时完全无痕） */
+    private val droppedCount = java.util.concurrent.atomic.AtomicInteger(0)
+
     /**
      * 回流一条 Hook 事件。
-     * @param ctx 任意能解析 ContentProvider 的 Context（hook 到的服务实例/系统上下文）
+     *
+     * Dev 12 修复：此前 `ctx == null` 直接 return —— xmsf 进程里
+     * `ActivityThread.currentActivityThread()` 取不到，**认证事件 100% 静默丢失**
+     * （诊断导出的 04-HOOK 里 xmsf 侧 0 条就是这个原因，而 LSP 日志里其实一大堆）。
+     * 现在：ctx 为 null 时自动回退到 [systemContextOrNull()]；仍拿不到则计数 +
+     * 写 logcat（tag=NCIslandHook，会被诊断导出的 logcat 补充段抓到），
+     * 并在下一次成功回流时把"此前丢弃 N 条"作为后缀带出，不再无声无息。
+     *
+     * @param ctx 任意能解析 ContentProvider 的 Context；可为 null（内部会兜底）
      * @param event 事件名（如 canShowFocus-ALLOW / auth-DONE）
-     * @param detail 附加信息（参数形态/耗时等）
+     * @param detail 附加信息（参数形态/耗时/错误码等）
      */
     fun log(ctx: Context?, event: String, detail: String = "") {
         val s = sink ?: return
-        val c = ctx ?: return
+        val c = ctx ?: systemContextOrNull()
+        if (c == null) {
+            droppedCount.incrementAndGet()
+            android.util.Log.w("NCIslandHook", "hook log dropped (no Context in $process): $event $detail")
+            return
+        }
+        val dropped = droppedCount.getAndSet(0)
+        val suffix = if (dropped > 0) " [此前因无 Context 丢弃 ${dropped} 条]" else ""
         val values = ContentValues().apply {
             put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_PACKAGE, process)
             put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_CHANNEL, "")
             put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_TITLE, event)
-            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_CONTENT, detail)
+            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_CONTENT, detail + suffix)
             put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_POST_TIME, System.currentTimeMillis())
             put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_PROBABILITY, 0f)
             put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_DECISION,
@@ -59,4 +77,24 @@ object HookLogSink {
             .getMethod("currentActivityThread").invoke(null) ?: return null
         at.javaClass.getMethod("getSystemContext").invoke(at) as? Context
     }.getOrNull()
+
+    /**
+     * 从 hook 现场尽力挖一个 Context：① 参数里的 Context ② thisObject 的 mContext 字段
+     * （含父类）③ [systemContextOrNull()]。都失败返回 null（调用方按丢弃处理并计数）。
+     */
+    fun contextOf(args: List<Any?>?, thisObject: Any?): Context? {
+        args?.firstOrNull { it is Context }?.let { return it as Context }
+        val holder = thisObject ?: return systemContextOrNull()
+        var c: Class<*>? = holder.javaClass
+        while (c != null) {
+            runCatching {
+                val f = c!!.getDeclaredField("mContext")
+                f.isAccessible = true
+                val v = f.get(holder)
+                if (v is Context) return v
+            }
+            c = c.superclass
+        }
+        return systemContextOrNull()
+    }
 }

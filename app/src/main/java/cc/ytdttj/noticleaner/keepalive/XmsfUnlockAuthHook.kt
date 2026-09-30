@@ -75,6 +75,11 @@ class XmsfUnlockAuthHook(private val module: XposedModule) {
     /** 认证失败拦截：强制 errorCode=0 并调用成功回调 h() */
     private class AuthBypassHooker(private val module: XposedModule) : XposedInterface.Hooker {
         override fun intercept(chain: XposedInterface.Chain): Any? {
+            // Dev 12：xmsf 进程里 ActivityThread.currentActivityThread() 常常取不到，
+            // 旧写法直接传 systemContextOrNull() 的结果（多为 null）→ 认证事件 100% 静默丢失。
+            // 改为从 hook 现场（参数 / thisObject.mContext）尽力取 Context，最后才回退系统上下文。
+            val ctx = cc.ytdttj.noticleaner.keepalive.HookLogSink
+                .contextOf(chain.args, chain.thisObject)
             val error = chain.args.getOrNull(0) ?: run {
                 // Dev 8：成功路径入口时间戳（此前静默 proceed，认证耗时无法量化）
                 val t = System.currentTimeMillis()
@@ -82,25 +87,45 @@ class XmsfUnlockAuthHook(private val module: XposedModule) {
                     android.util.Log.INFO, "NCIslandHook",
                     "auth success path START t=$t",
                 )
-                cc.ytdttj.noticleaner.keepalive.HookLogSink.log(
-                    cc.ytdttj.noticleaner.keepalive.HookLogSink.systemContextOrNull(),
-                    "auth-START", "t=$t",
-                )
+                cc.ytdttj.noticleaner.keepalive.HookLogSink.log(ctx, "auth-START", "t=$t")
                 return chain.proceed()
             }
             return runCatching {
+                // Dev 12：强制置 0 之前先把真实错误码与错误信息回流——
+                // 否则只知道"认证失败"，永远不知道为什么失败（无法判断能否让它真成功）
+                val errInfo = errorInfo(error)
                 setIntField(error!!, "a", 0)
                 val success = callNoArg(chain.thisObject, "h")
-                module.log(android.util.Log.INFO, "NCIslandHook", "auth bypassed (errorCode forced to 0)")
+                module.log(android.util.Log.INFO, "NCIslandHook", "auth bypassed (errorCode forced to 0) $errInfo")
                 cc.ytdttj.noticleaner.keepalive.HookLogSink.log(
-                    cc.ytdttj.noticleaner.keepalive.HookLogSink.systemContextOrNull(),
-                    "auth-BYPASSED", "云端认证失败，已强制成功（fail-closed 已被本 hook 兜底）",
+                    ctx,
+                    "auth-BYPASSED",
+                    "云端认证失败已强制成功（fail-closed 兜底）：$errInfo",
                 )
                 success
             }.getOrElse {
                 module.log(android.util.Log.WARN, "NCIslandHook", "auth bypass failed: $it")
                 chain.proceed()
             }
+        }
+
+        /** 读取 xmsf 认证错误对象的错误码（混淆字段 a）与可读信息，全部防御式 */
+        private fun errorInfo(error: Any?): String {
+            if (error == null) return "error=null"
+            val code = runCatching {
+                var c: Class<*>? = error.javaClass
+                while (c != null) {
+                    runCatching {
+                        val f = c!!.getDeclaredField("a")
+                        f.isAccessible = true
+                        return@runCatching f.get(error)
+                    }.onSuccess { return@runCatching it }
+                    c = c.superclass
+                }
+                null
+            }.getOrNull()
+            val text = runCatching { error.toString() }.getOrDefault("?").take(120)
+            return "code=$code msg=$text"
         }
     }
 
@@ -113,7 +138,8 @@ class XmsfUnlockAuthHook(private val module: XposedModule) {
                 "auth success callback DONE t=$t — island may render now",
             )
             cc.ytdttj.noticleaner.keepalive.HookLogSink.log(
-                cc.ytdttj.noticleaner.keepalive.HookLogSink.systemContextOrNull(),
+                cc.ytdttj.noticleaner.keepalive.HookLogSink
+                    .contextOf(chain.args, chain.thisObject),
                 "auth-DONE", "t=$t",
             )
             return chain.proceed()

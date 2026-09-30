@@ -270,7 +270,15 @@ class CleanerListenerService : NotificationListenerService() {
         // 事件无法事后归因（招行 09:31 上岛排查时 logcat/内存 trace 均已滚动丢失）
         cc.ytdttj.noticleaner.diagnostics.RingLog.log(
             cc.ytdttj.noticleaner.diagnostics.LogModules.PIPE,
-            "通知 pkg=${sbn.packageName} backfill=$fromBackfill title=${title.take(24)}",
+            // Dev 12：补正文片段——只有标题无法判断"这条为什么被判广告"，
+            // 决策依据正是 title + content 合流后的文本（正文截断 60 字，控制环形日志体积）
+            // Dev 12 延迟排查：post=通知原始发布时间、lag=发布到我们收到的滞后
+            //（lag 几十秒以上 = 系统投递积压，与本 App 处理速度无关）
+            "通知 pkg=${sbn.packageName} backfill=$fromBackfill" +
+                " post=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
+                " lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(System.currentTimeMillis() - sbn.postTime)}" +
+                " title=${title.take(24)}" +
+                " content=${text.take(60)}",
         )
 
         // 1.1.13：灭屏瞬间 CPU 可能被挂起导致打分/入库中断，短超时部分唤醒锁保证处理完成

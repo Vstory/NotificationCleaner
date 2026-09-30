@@ -120,12 +120,22 @@ object IslandNotifier {
      * 发送走 [IslandPoster]（clearBeforePost + visibility）。
      */
     fun maybePost(context: Context, sbn: StatusBarNotification, title: String, content: String) {
+        // Dev 12 延迟排查：记录"我们开始处理这条原始通知"的时刻，
+        // 与 sbn.postTime（微信/银行发出通知的时刻）相减 = 系统投递滞后
+        val receivedAt = System.currentTimeMillis()
         // 模拟来源解析：Shell 通知的 island:<pkg> tag → 按模拟包名走白名单/图标/App名
         val pkg = effectivePackage(sbn)
         val inWhitelist = pkg in packages
         // 诊断：只对白名单相关包名记录，避免噪音
         if (inWhitelist || sbn.packageName == SHELL_PACKAGE) {
-            IslandTrace.log("收到通知 pkg=$pkg raw=${sbn.packageName} title=${title.take(20)}")
+            // Dev 12：补正文片段——排查"扣款通知没上岛"时，只有标题看不出金额在哪一段
+            IslandTrace.log(
+                "收到通知 pkg=$pkg raw=${sbn.packageName}" +
+                    " post=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
+                    " lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(receivedAt - sbn.postTime)}" +
+                    " title=${title.take(20)}" +
+                    " content=${content.take(60)}",
+            )
         }
         if (!enabled) {
             if (inWhitelist) IslandTrace.log("✗ 总开关未开启，跳过")
@@ -193,7 +203,17 @@ object IslandNotifier {
         }
 
         IslandPoster.post(context, id, notification)
-        IslandTrace.log("岛通知已提交系统 (id=$id, LSPosed 放行认证)")
+        // Dev 12 延迟排查：一条记录里给出完整时间链——
+        //   srcPost = 原始动账通知（微信/银行）的发布时间
+        //   lag     = 从原始通知发布 → 我们提交岛通知（含系统投递积压 + App 处理）
+        //   took    = 纯 App 内部耗时（收到 → 提交），用于证明 App 侧是否拖后腿
+        val postedAt = System.currentTimeMillis()
+        IslandTrace.log(
+            "岛通知已提交系统 (id=$id, LSPosed 放行认证" +
+                ", srcPost=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
+                ", lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(postedAt - sbn.postTime)}" +
+                ", took=${postedAt - receivedAt}ms)",
+        )
     }
 
     /**

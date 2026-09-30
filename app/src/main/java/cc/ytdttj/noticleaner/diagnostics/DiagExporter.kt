@@ -113,13 +113,26 @@ object DiagExporter {
         appendLine("覆盖窗口: ${dayFmt.format(Date(windowStart))} ~ ${dayFmt.format(Date(now))}（导出前完整 24 小时）")
         appendLine("说明: 01~09 每个模块文件只保留上述窗口内的条目；窗口外的历史已按 24 小时自动裁剪。")
         appendLine()
+        appendLine("==== 上岛延迟怎么看（Dev 12）====")
+        appendLine("02/03 模块里每条通知都带 post= 与 lag=：")
+        appendLine("  post = 通知的原始发布时间（微信/银行发出的时刻，sbn.postTime）")
+        appendLine("  lag  = post 到「我们收到/处理」的间隔 —— 几十秒以上说明是系统投递积压")
+        appendLine("        （灭屏或后台冻结时系统会压着不投递，亮屏才补投），此时 App 处理再快也没用")
+        appendLine("03 模块「岛通知已提交系统」一行还带：")
+        appendLine("  lag  = 原始通知发布 → 我们提交岛通知（投递积压 + App 处理）")
+        appendLine("  took = 纯 App 内部耗时（收到 → 提交），几十毫秒属正常")
+        appendLine("距离岛真正出现在屏幕上还差：SystemUI 校验（约 15ms）+ xmsf 云认证（实测 0.5~0.8s，")
+        appendLine("且当前 100% 失败、靠模块 hook 兜底）+ HyperOS 岛渲染排队（未知，需系统侧时间戳）。")
+        appendLine()
         appendLine("==== 文件清单与 24 小时覆盖情况 ====")
         appendLine("00-诊断头与状态快照.txt —— 本文件（状态快照 + 覆盖汇总）")
         for (m in LogModules.ALL) {
             val s = stats[m]
             appendLine("${LogModules.fileName(m)} —— ${s?.summaryLine(windowStart) ?: "（无统计）"}")
         }
-        appendLine("10-通知历史-24h.csv —— 最近 24 小时通知历史（数据库记录，CSV 可直接用表格打开）")
+        appendLine("10-通知历史-24h.csv —— 最近 24 小时通知历史（数据库记录）：时间/应用/包名/通道/标题/**正文**/决策/AI率/已学习")
+        appendLine("      注：CSV 与 02/03 模块日志均含通知正文片段（便于排查误判与未上岛），")
+        appendLine("      分享前请留意其中可能带有验证码、金额等敏感内容")
         appendLine()
         appendLine("==== 模块对照表 ====")
         for (m in LogModules.ALL) {
@@ -315,10 +328,13 @@ object DiagExporter {
         val rows = cc.ytdttj.noticleaner.ServiceLocator.db.notificationDao().listSince(windowStart)
         // Dev 11：UTF-8 BOM——CSV 是纯 UTF-8，Excel/WPS 在中文 Windows 上按 GBK 打开即乱码
         //（历史通知 CSV 导出 HistoryCsvExporter 一直写 BOM，Dev 9 新增的本文件漏了）
-        if (rows.isEmpty()) return "\ufeff时间,应用,包名,标题,决策,AI率,已学习\r\n（最近 24 小时无通知记录）\r\n"
+        // Dev 12：补「通知正文」+「通知通道」——只有标题时无法判断"这条为什么被判广告/
+        // 为什么没上岛"（判断依据是 title+content 合流后的文本，通道还会带来偏置权重）
+        val header = "时间,应用,包名,通知通道,通知标题,通知正文,决策,AI率,已学习"
+        if (rows.isEmpty()) return "\ufeff$header\r\n（最近 24 小时无通知记录）\r\n"
         return buildString {
             append("\ufeff")
-            append("时间,应用,包名,标题,决策,AI率,已学习\r\n")
+            append(header).append("\r\n")
             for (n in rows) {
                 // CRLF：与表头一致，Excel/WPS 打开不串行
                 append(
@@ -326,7 +342,9 @@ object DiagExporter {
                         shortFmt.format(Date(n.postTime)),
                         n.appName,
                         n.packageName,
-                        n.title.take(60).replace("\n", " "),
+                        n.channelName.ifBlank { n.channelId }.ifBlank { "-" },
+                        n.title.replace("\n", " "),
+                        n.content.replace("\n", " "),
                         n.decision,
                         "${(n.adProbability * 100).toInt()}%",
                         if (n.learned) "是(${if (n.learnLabel == 1) "广告" else "正常"})" else "否",

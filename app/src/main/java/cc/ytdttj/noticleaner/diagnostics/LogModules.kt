@@ -92,8 +92,12 @@ object LogModules {
         else -> null
     }
 
-    /** 岛链路的 logcat tag（多 tag 归并到 ISLAND 模块） */
-    val ISLAND_TAGS: List<String> = listOf("NCIsland", "IslandNotifier", "IslandBypass")
+    /**
+     * 岛链路的 logcat tag（多 tag 归并到 ISLAND 模块）。
+     * `NCIslandHook` = SystemUI / xmsf 侧 hook 自身的日志（Dev 12：含"取不到 Context 导致
+     * 事件丢弃"这类兜底告警——Hook 回流的健康度只能从这里看出来）。
+     */
+    val ISLAND_TAGS: List<String> = listOf("NCIsland", "IslandNotifier", "IslandBypass", "NCIslandHook")
 
     /** logcat 抓取的全部 tag（其它一律 *:S 静默，避免导出里混进系统噪声） */
     val LOGCAT_TAGS: List<String> =
