@@ -70,10 +70,9 @@ class SettingsViewModel(
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    // ---- 超级岛（island 分支功能）----
+    // ---- 超级岛（island 分支功能；Dev 5 重构：LSPosed only）----
     val islandEnabled = settings.islandEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val islandPackages = settings.islandPackages.stateIn(viewModelScope, SharingStarted.Eagerly, cc.ytdttj.noticleaner.notify.island.IslandNotifier.DEFAULT_PACKAGES)
-    val islandDropBlind = settings.islandDropBlind.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** 岛探测状态（实时刷新：保活动作完成后自动重新探测） */
     private val _islandProbe = MutableStateFlow("探测系统支持中…")
@@ -120,6 +119,12 @@ class SettingsViewModel(
 
     init {
         refreshKeepAlive()
+        // Dev 7：LSPosed 框架服务绑定/作用域变化（含授权框批准后）自动刷新保活与岛探测
+        viewModelScope.launch {
+            cc.ytdttj.noticleaner.keepalive.LspServiceDetector.state.collect {
+                refreshKeepAlive()
+            }
+        }
     }
 
     fun refreshKeepAlive() {
@@ -154,6 +159,13 @@ class SettingsViewModel(
                 )?.getBoolean("canShowFocus", false)
             }.getOrNull()
             val lsp = ServiceLocator.keepAlive.isLspActive()
+            val lspService = cc.ytdttj.noticleaner.keepalive.LspServiceDetector.state.value
+            val islandScopeReady = lspService.bound && lspService.hasAllScope(
+                setOf(
+                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_UI,
+                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_XMSF,
+                ),
+            )
             val osLine = when {
                 protocol >= 3 -> "系统：HyperOS 3 超级岛"
                 protocol == 2 -> "系统：焦点通知（OS2），无岛形态"
@@ -164,10 +176,12 @@ class SettingsViewModel(
                 false -> "白名单：未放行（LSPosed 未激活或未勾选系统界面作用域）"
                 null -> "白名单：无法查询"
             }
-            val lspLine = when (lsp) {
-                true -> "LSPosed：模块已激活"
-                false -> "LSPosed：模块未激活"
-                null -> "LSPosed：未安装或无法检测"
+            val lspLine = when {
+                lspService.bound && islandScopeReady -> "LSPosed：模块已激活（岛作用域已就绪）"
+                lspService.bound -> "LSPosed：模块已激活（岛作用域未授权，打开岛开关可授权）"
+                lsp == true -> "LSPosed：模块已激活（system_server 心跳）"
+                // Dev 5：检测不到证据 ≠ 未激活（原实现误报），如实显示"无法自动检测"
+                else -> "LSPosed：无法自动检测（以 LSPosed 管理器为准）"
             }
             val shizukuLine = if (shizukuOk) "Shizuku：已授权" else "Shizuku：未授权"
             _islandProbe.value = listOf(osLine, hookLine, lspLine, shizukuLine).joinToString("\n")
@@ -189,11 +203,53 @@ class SettingsViewModel(
     // ---- 超级岛（island 分支功能）----
 
     fun setIslandEnabled(v: Boolean) {
+        val was = islandEnabled.value
         viewModelScope.launch { settings.setIslandEnabled(v) }
+        // Dev 7：首次打开岛开关 → 弹 LSPosed 授权框，请求岛作用域（系统界面 + 小米服务框架）
+        if (v && !was) {
+            cc.ytdttj.noticleaner.keepalive.LspServiceDetector.requestScope(
+                listOf(
+                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_UI,
+                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_XMSF,
+                ),
+            ) { result ->
+                _toast.value = result.fold(
+                    onSuccess = { scope ->
+                        val ok = scope.containsAll(
+                            listOf(
+                                cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_UI,
+                                cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_XMSF,
+                            ),
+                        )
+                        if (ok) "岛作用域已授权：请到 高级功能 点击「重启岛作用域」让 hook 立即生效"
+                        else "岛作用域部分授权，可在 LSPosed 管理器补齐后重启作用域"
+                    },
+                    onFailure = { "岛作用域授权失败：${it.message}（也可在 LSPosed 管理器手动勾选）" },
+                )
+            }
+        }
     }
 
-    fun setIslandDropBlind(v: Boolean) {
-        viewModelScope.launch { settings.setIslandDropBlind(v) }
+    // ---- LSPosed 框架服务状态（Dev 7：libxposed service 绑定 + 作用域）----
+    val lspServiceState = cc.ytdttj.noticleaner.keepalive.LspServiceDetector.state
+
+    /** 保活：请求系统框架（android）作用域（system_server 保活/拦截 hook） */
+    fun requestKeepAliveScope() {
+        cc.ytdttj.noticleaner.keepalive.LspServiceDetector.requestScope(
+            listOf(cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER),
+        ) { result ->
+            _toast.value = result.fold(
+                onSuccess = { "系统框架作用域已授权：请重启手机使保活 hook 生效" },
+                onFailure = { "授权失败：${it.message}" },
+            )
+        }
+    }
+
+    // ---- 历史通知（Dev 6：保留天数可调）----
+    val historyRetentionDays = settings.historyRetentionDays.stateIn(viewModelScope, SharingStarted.Eagerly, 7)
+
+    fun setHistoryRetentionDays(v: Int) {
+        viewModelScope.launch { settings.setHistoryRetentionDays(v) }
     }
 
     fun toggleIslandPackage(pkg: String) {
@@ -204,7 +260,7 @@ class SettingsViewModel(
         }
     }
 
-    /** 发送测试岛通知（走完整盲窗链路） */
+    /** 发送测试岛通知（走完整 LSPosed 链路） */
     fun sendTestIsland() {
         cc.ytdttj.noticleaner.notify.island.IslandNotifier.sendTest(ServiceLocator.appContext) { msg ->
             _toast.value = msg
@@ -218,10 +274,6 @@ class SettingsViewModel(
 
     fun simulateNotification(pkg: String, title: String, content: String) {
         if (_simulateBusy.value) return
-        if (!cc.ytdttj.noticleaner.notify.island.IslandBypassExecutor.isReady()) {
-            _toast.value = "Shizuku 未授权：模拟发送需要 Shizuku"
-            return
-        }
         if (title.isBlank() && content.isBlank()) {
             _toast.value = "标题和内容不能同时为空"
             return
@@ -376,6 +428,34 @@ class SettingsViewModel(
         }
     }
 
+    /**
+     * 重启岛作用域进程（Dev 5，Root；命令参考 ref/HyperIsland RestartScopeDialog）：
+     * - SystemUI：killall（persistent 进程对 force-stop 不响应），死后由 zygote 自动拉起；
+     * - 小米服务框架：am force-stop，被小米推送自行重新拉起。
+     * LSPosed hook 修改作用域/更新模块后，重启对应进程即可让 hook 生效，无需整机重启。
+     */
+    fun restartIslandScope() {
+        if (_execBusy.value) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _execBusy.value = true
+            val commands = listOf(
+                "killall com.android.systemui",
+                "am force-stop com.xiaomi.xmsf",
+            )
+            _execResult.value = buildString {
+                for (cmd in commands) {
+                    val out = runCatching { RootExecutor.exec(cmd) }.getOrElse { "执行失败: $it" }
+                    append("$ ").appendLine(cmd)
+                    append(if (out.isBlank()) "(无输出)" else out).appendLine().appendLine()
+                }
+                appendLine("两条命令执行完毕。SystemUI 与小米服务框架正在自动重启，")
+                append("约 10–20 秒后锁屏/岛恢复即可测试上岛。")
+            }.trim()
+            _execBusy.value = false
+            refreshKeepAlive()
+        }
+    }
+
     fun dismissExecResult() {
         _execResult.value = null
     }
@@ -390,13 +470,18 @@ class SettingsViewModel(
 }
 
 @Composable
-fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewModel(factory = settingsVmFactory())) {
+fun SettingsScreen(
+    onOpenStats: (String) -> Unit,
+    onOpenOpenSource: () -> Unit = {},
+    vm: SettingsViewModel = viewModel(factory = settingsVmFactory()),
+) {
     val threshold by vm.threshold.collectAsState()
     val intercept by vm.interceptMode.collectAsState()
     val excludeRecents by vm.excludeFromRecents.collectAsState()
     val filteredCount by vm.filteredCount.collectAsState()
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
+    val lspServiceState by vm.lspServiceState.collectAsState()
     val modelInfo by vm.modelInfo.collectAsState()
     val execResult by vm.execResult.collectAsState()
     val execBusy by vm.execBusy.collectAsState()
@@ -422,7 +507,17 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
     }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            // Dev 15：玻璃模式下悬浮底栏位于 Scaffold 之外，会盖住滚到最底部的功能块
+            // → 内容底部让位一个底栏高度（非玻璃模式有 bottomBar，无需让位）
+            .padding(bottom = if (cc.ytdttj.noticleaner.ui.LocalGlassMode.current) {
+                cc.ytdttj.noticleaner.ui.glass.GlassFloatingBarClearance
+            } else {
+                0.dp
+            })
+            .padding(16.dp),
     ) {
         // ---- 界面风格切换（1.4.0 Dev 4）：液态玻璃 / Material 3 ----
         cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
@@ -600,10 +695,27 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                     )
                     AdvancedRow(
                         label = "LSPosed 保活",
-                        desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成",
+                        desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
+                            "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
                         ok = keepAlive.lspDetected == true,
-                        actionLabel = null,
-                        onAction = {},
+                        actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
+                                cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
+                            )
+                        ) "授权" else null,
+                        onAction = {
+                            if (lspServiceState.bound) vm.requestKeepAliveScope()
+                            else vm.showToast("请先在 LSPosed 中启用本模块")
+                        },
+                    )
+                    AdvancedRow(
+                        label = "重启岛作用域",
+                        desc = "以 Root 重启 系统界面 + 小米服务框架：更新模块或修改 LSPosed 作用域后让岛 hook 立即生效，无需整机重启",
+                        ok = keepAlive.rootAvailable,
+                        actionLabel = if (keepAlive.rootAvailable) "重启" else null,
+                        onAction = {
+                            if (keepAlive.rootAvailable) vm.restartIslandScope()
+                            else vm.showToast("重启作用域需要 Root（su）")
+                        },
                     )
                     AdvancedRow(
                         label = "无障碍保活",
@@ -693,7 +805,7 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                     Column(Modifier.weight(1f)) {
                         Text("导出诊断日志", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "版本/权限/岛链路状态快照 + logcat，经系统分享发送给开发者排查",
+                            "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -710,14 +822,15 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                                         file,
                                     )
                                     val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
+                                        // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
+                                        type = "application/zip"
                                         putExtra(android.content.Intent.EXTRA_STREAM, uri)
                                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     diagContext.startActivity(
                                         android.content.Intent.createChooser(send, "分享诊断日志"),
                                     )
-                                    "已导出: ${file.name}"
+                                    "已导出: ${file.name}（${file.length() / 1024}KB）"
                                 }.getOrElse { "导出失败: ${it.message}" }
                                 diagExporting = false
                                 diagMsg = msg
@@ -728,6 +841,84 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                 diagMsg?.let {
                     Spacer(Modifier.height(4.dp))
                     Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                }
+                // ---- 历史通知管理（Dev 6，折叠）----
+                var historyPanelOpen by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth().clickable { historyPanelOpen = !historyPanelOpen },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (historyPanelOpen) "▾ 历史通知管理" else "▸ 历史通知管理",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                if (historyPanelOpen) {
+                    Spacer(Modifier.height(8.dp))
+                    // CSV 导出
+                    val csvScope = rememberCoroutineScope()
+                    var csvExporting by remember { mutableStateOf(false) }
+                    var csvMsg by remember { mutableStateOf<String?>(null) }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("导出历史通知 CSV", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(
+                            enabled = !csvExporting,
+                            onClick = {
+                                csvExporting = true
+                                csvScope.launch {
+                                    val msg = runCatching {
+                                        val file = cc.ytdttj.noticleaner.diagnostics.HistoryCsvExporter.export(diagContext)
+                                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                                            diagContext,
+                                            "${diagContext.packageName}.fileprovider",
+                                            file,
+                                        )
+                                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/csv"
+                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        diagContext.startActivity(
+                                            android.content.Intent.createChooser(send, "分享历史通知 CSV"),
+                                        )
+                                        "已导出 ${file.name}（${file.length() / 1024}KB）"
+                                    }.getOrElse { "导出失败: ${it.message}" }
+                                    csvExporting = false
+                                    csvMsg = msg
+                                }
+                            },
+                        ) { Text(if (csvExporting) "导出中…" else "导出") }
+                    }
+                    csvMsg?.let {
+                        Spacer(Modifier.height(4.dp))
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    // 保留天数（监控式循环：最新的顶掉 N 天前的）
+                    val historyRetentionDays by vm.historyRetentionDays.collectAsState()
+                    var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
+                    Column(Modifier.fillMaxWidth()) {
+                        Text("历史保留天数：${retentionDraft} 天", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "未学习的历史通知只保留 N 天，最新通知不断把最老的顶掉（监控式循环保存）；已学习的标注不受影响",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        androidx.compose.material3.Slider(
+                            value = retentionDraft.toFloat(),
+                            onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
+                            onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
+                            valueRange = 1f..30f,
+                            steps = 28,
+                        )
+                    }
                 }
             }
         }
@@ -753,17 +944,18 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))
-        // ---- 超级岛支付提醒（island 分支实验功能） ----
+        // ---- 超级岛支付提醒（island 分支实验功能；Dev 5 重构：LSPosed only） ----
         val islandEnabled by vm.islandEnabled.collectAsState()
         val islandPackages by vm.islandPackages.collectAsState()
-        val islandDropBlind by vm.islandDropBlind.collectAsState()
         var showDiag by remember { mutableStateOf(false) }
         cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("超级岛支付提醒（实验）", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "银行/支付类 App 的收支通知自动上岛：摘要态显示来源图标与金额，展开显示详情。仅 HyperOS 3 + Shizuku 生效，失败自动退化为普通通知。",
+                    "银行/支付类 App 的收支通知自动上岛：摘要态显示来源图标与金额，展开显示详情。" +
+                        "认证放行依赖 LSPosed 模块（需在 LSPosed 中启用本模块并勾选" +
+                        "系统界面 + 小米服务框架作用域），失败自动退化为普通通知。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -786,19 +978,6 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                         )
                         Text(label, style = MaterialTheme.typography.bodyMedium)
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("免 LSPosed 模式", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "iptables DROP 盲窗放行认证（需 Root，不需要 LSPosed 模块）。关闭时走 xmsf hook。两者互不冲突。",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Switch(checked = islandDropBlind, onCheckedChange = { vm.setIslandDropBlind(it) })
                 }
                 Spacer(Modifier.height(8.dp))
                 Row {
@@ -938,6 +1117,27 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                         )
                     }
                 }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        // ---- 参考开源项目（Dev 17）：高级功能块下方，跳转开源项目列表 ----
+        cc.ytdttj.noticleaner.ui.glass.NcCard(
+            Modifier.fillMaxWidth().clickable { onOpenOpenSource() },
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "参考开源项目",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "本项目的借鉴、参考与依赖来源",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text("›", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
             }
         }
         Spacer(Modifier.height(12.dp))

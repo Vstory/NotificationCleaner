@@ -48,7 +48,7 @@ object IslandParamsBuilder {
         content: String,
         sourceIcon: Bitmap?,
         contentIntent: PendingIntent?,
-        islandTimeoutSec: Int = 120,
+        islandTimeoutSec: Int = Int.MAX_VALUE, // Dev 16：结果岛常驻（property=2），直到"已完成"按钮
         showNotification: Boolean = false,
         autoExpandSec: Int = 5,
         notificationId: Int = 0, // "已完成"按钮清除目标（0 = 不挂清除按钮）
@@ -135,9 +135,9 @@ object IslandParamsBuilder {
         }
 
         val paramIsland = JSONObject().apply {
-            put("islandProperty", 1) // 持久岛（进通知栏记录位，靠 islandTimeout 下岛）
+            put("islandProperty", 2) // Dev 16：结果岛（SignalDock 实证：常驻胶囊直到"已完成"/划掉）
             put("islandPriority", 2)
-            put("islandTimeout", islandTimeoutSec)
+            put("islandTimeout", islandTimeoutSec) // Dev 16：Int.MAX_VALUE = 常驻，不受 120s 自动下岛
             put("dismissIsland", false)
             put("expandedTime", autoExpandSec) // 展开态自动保持 N 秒后收起为胶囊（0=立即收起）
             put("maxSize", false)
@@ -151,7 +151,7 @@ object IslandParamsBuilder {
             put("business", "payment")
             put("enableFloat", false) // 更新时不自动展开
             put("islandFirstFloat", true) // 首次出现直接弹出展开态
-            put("updatable", false) // 一次性提醒类
+            put("updatable", true) // Dev 16：结果岛常驻，允许后续同会话更新内容
             put("isShowNotification", showNotification) // 测试路径 true：岛被认证拒绝时通知栏至少留痕
             put("ticker", "$appName ${payment.capsuleText.trim()}")
             put("tickerPic", PIC_APP)
@@ -196,6 +196,12 @@ object IslandParamsBuilder {
             .setContentText(payment.capsuleText.trim())
             .setOngoing(false)
             .setAutoCancel(true)
+            // Dev 5（借鉴 ref/HyperIsland）：常规路径通知栏完全无痕（岛照常展示）；
+            // 测试路径 PRIVATE 留痕，判别认证拒绝
+            .setVisibility(
+                if (showNotification) Notification.VISIBILITY_PRIVATE
+                else Notification.VISIBILITY_SECRET,
+            )
             .addExtras(extras)
         contentIntent?.let { builder.setContentIntent(it) }
         return builder.build()

@@ -298,7 +298,14 @@ private fun MainNavHost(navController: androidx.navigation.NavHostController, mo
         startDestination = "history",
         modifier = modifier,
     ) {
-        composable("history") { HistoryScreen() }
+        composable("history") {
+            HistoryScreen(
+                onOpenAppPicker = {
+                    // initial 已由 HistoryScreen 写入 AppPickerSession；结果同样经 result 回读
+                    navController.navigate("apppicker/筛选APP")
+                },
+            )
+        }
         composable("rules") {
             RulesScreen(
                 onOpenRuleEdit = { navController.navigate("ruleedit") },
@@ -306,7 +313,13 @@ private fun MainNavHost(navController: androidx.navigation.NavHostController, mo
             )
         }
         composable("settings") {
-            SettingsScreen(onOpenStats = { navController.navigate("stats/$it") })
+            SettingsScreen(
+                onOpenStats = { navController.navigate("stats/$it") },
+                onOpenOpenSource = { navController.navigate("opensource") },
+            )
+        composable("opensource") {
+            cc.ytdttj.noticleaner.ui.settings.OpenSourceScreen(onBack = { navController.popBackStack() })
+        }
         }
         composable("stats/{mode}") { entry ->
             val mode = entry.arguments?.getString("mode") ?: "filtered"

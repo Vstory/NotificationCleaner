@@ -69,73 +69,100 @@ class WatchdogReceiver : BroadcastReceiver() {
         val connected = CleanerListenerService.isListenerConnected()
         Log.i(TAG, "fired enabled=$enabled connected=$connected uptime=${SystemClock.elapsedRealtime()}")
         // 1.4.0 Dev 12：环形留痕（心跳 30s/次，相邻相同自动折叠为 ×N 摘要，不刷爆配额）
-        cc.ytdttj.noticleaner.diagnostics.RingLog.log("看门狗心跳 enabled=$enabled connected=$connected")
+        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+            cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+            "看门狗心跳 enabled=$enabled connected=$connected",
+        )
+
+        // ── 2.0.1 Dev 2 重构（修复崩溃死循环）────────────────────────────────────
+        // 旧实现：Shizuku 修复分支和 purgeExpired 各调一次 goAsync —— BroadcastReceiver
+        // 的 goAsync 只能调一次，第二次返回的 PendingResult 为 null → finish() NPE →
+        // 进程 FATAL。实测（M332BF / Android 17）：断连 + Shizuku 可用时每 30s 崩一次，
+        // 修复协程每次都被崩溃杀掉 → 监听永远修不好 → 无限崩溃-重启循环。
+        // 新实现：
+        //   1. 自续约 schedule() 前置——后面任何异常都不断闹钟链
+        //   2. goAsync 全程只调一次，修复与清理合并进同一个协程
+        //   3. 整个 onReceive 兜底 runCatching，绝不向上抛
+        schedule(context)
+
+        val pending: android.content.BroadcastReceiver.PendingResult? = try {
+            goAsync()
+        } catch (t: Throwable) {
+            Log.w(TAG, "goAsync failed: $t")
+            null
+        }
+
+        fun finishSafely() {
+            runCatching { pending?.finish() }
+        }
 
         if (enabled && !connected) {
             CleanerListenerService.requestRebindIfEnabled(context)
             Log.i(TAG, "rebind requested")
             // Dev 15：看门狗发现"权限在、连接不在"→ 发失效提醒（内部 30 分钟冷却，不会刷屏）
+            // 2.0.1 Dev 3：连续 ≥10 次（约 5 分钟）仍断连 → 升级提醒为"建议重启手机"
+            // （系统在监听服务反复崩溃后会放弃重绑，只有重启能复位——M332BF 实测）
             runCatching {
-                ListenerAlertNotifier.notifyDown(context, "监听未连接，看门狗已尝试重绑")
+                ListenerAlertNotifier.notifyDown(
+                    context,
+                    "监听未连接，看门狗已尝试重绑",
+                    escalate = consecutiveDisconnected + 1 >= 10,
+                )
             }
             cc.ytdttj.noticleaner.diagnostics.RingLog.log(
-                "✗ 看门狗：监听断连 → 请求重绑（连续第 $consecutiveDisconnected+1 次）",
+                cc.ytdttj.noticleaner.diagnostics.LogModules.KEEP,
+                "✗ 看门狗：监听断连 → 请求重绑（连续第 ${consecutiveDisconnected + 1} 次）",
             )
             // 1.1.14：尝试重启保活前台服务——恢复进程重要性并抖掉可能卡死的绑定
             // （受 FGS 后台启动限制时抛异常，忽略：重绑请求已发出）
             runCatching { KeepAliveService.start(context) }
                 .onFailure { Log.w(TAG, "fgs restart rejected: $it") }
-            // 1.2.1：连续 2 次触发仍断连 → Shizuku 可用时做"摘除写回"强制重绑（30 分钟节流；
-            // 仅 Shizuku——Root 后台自动执行会弹 su 授权打扰用户，Root 修复走设置页手动按钮）
             consecutiveDisconnected++
             val now = SystemClock.elapsedRealtime()
-            if (consecutiveDisconnected >= 2 && now - lastRepairAt > REPAIR_THROTTLE_MS) {
-                val shizukuUsable = runCatching {
-                    rikka.shizuku.Shizuku.pingBinder() &&
-                        rikka.shizuku.Shizuku.checkSelfPermission() ==
-                        android.content.pm.PackageManager.PERMISSION_GRANTED
-                }.getOrDefault(false)
-                if (shizukuUsable) {
-                    lastRepairAt = now
-                    consecutiveDisconnected = 0
-                    Log.i(TAG, "listener still disconnected → shizuku listener repair")
-                    cc.ytdttj.noticleaner.diagnostics.RingLog.log("看门狗：Shizuku 强制修复监听")
-                    val result = goAsync()
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                        try {
-                            val log = ListenerRepair.repair(ShizukuExecutor)
-                            Log.i(TAG, "listener repair done:\n$log")
-                            cc.ytdttj.noticleaner.diagnostics.RingLog.log(
-                                "看门狗：Shizuku 修复完成 → ${log.lineSequence().firstOrNull()?.take(80)}",
-                            )
-                        } catch (t: Throwable) {
-                            Log.w(TAG, "listener repair failed: $t")
-                            cc.ytdttj.noticleaner.diagnostics.RingLog.log("✗ 看门狗：Shizuku 修复失败 $t")
-                        } finally {
-                            result.finish()
-                        }
-                    }
+            val needRepair = consecutiveDisconnected >= 2 &&
+                now - lastRepairAt > REPAIR_THROTTLE_MS
+            val shizukuUsable = needRepair && runCatching {
+                rikka.shizuku.Shizuku.pingBinder() &&
+                    rikka.shizuku.Shizuku.checkSelfPermission() ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            }.getOrDefault(false)
+            if (shizukuUsable) {
+                lastRepairAt = now
+                consecutiveDisconnected = 0
+                Log.i(TAG, "listener still disconnected → shizuku listener repair")
+                // 2.0.1 Dev 10（P1-9）：修复流程**移出广播预算**——
+                // 6+ 条 shell 命令 + dumpsys 跑在 goAsync 的 10s 窗口里必然超时（超时后系统
+                // 按接收器超时处理，后台进程可能被整杀）。这里只"下单"，由常驻的
+                // KeepAliveService 在自身作用域内执行，本协程只做一次快速的过期清理。
+                KeepAliveService.startRepair(context)
+            }
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    // 1.2.0（ImprovePlan P0-2）：顺带清理过期通知（Dev 6：保留天数可调）
+                    runCatching {
+                        val cutoff = cc.ytdttj.noticleaner.ServiceLocator.settings
+                            .historyRetentionCutoff(System.currentTimeMillis())
+                        cc.ytdttj.noticleaner.ServiceLocator.db.notificationDao()
+                            .purgeOlderThan(cutoff)
+                    }.onFailure { Log.w(TAG, "purgeOlderThan failed: $it") }
+                } finally {
+                    finishSafely()
                 }
             }
         } else {
             consecutiveDisconnected = 0
-        }
-
-        // 1.2.0（ImprovePlan P0-2）：顺带清理过期通知——闹钟 9 分钟天然节流 + Doze 免疫，
-        // 修复长驻进程下 purgeExpired 只在服务 onCreate 执行一次导致的 DB 无限膨胀
-        val result = goAsync()
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                runCatching {
-                    cc.ytdttj.noticleaner.ServiceLocator.db.notificationDao()
-                        .purgeExpired(System.currentTimeMillis())
-                }.onFailure { Log.w(TAG, "purgeExpired failed: $it") }
-            } finally {
-                result.finish()
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    runCatching {
+                        val cutoff = cc.ytdttj.noticleaner.ServiceLocator.settings
+                            .historyRetentionCutoff(System.currentTimeMillis())
+                        cc.ytdttj.noticleaner.ServiceLocator.db.notificationDao()
+                            .purgeOlderThan(cutoff)
+                    }.onFailure { Log.w(TAG, "purgeOlderThan failed: $it") }
+                } finally {
+                    finishSafely()
+                }
             }
         }
-
-        // 自续约（KeepAliveService 存活期间由它启动；服务被杀后本接收器仍可维持链条）
-        schedule(context)
     }
 }

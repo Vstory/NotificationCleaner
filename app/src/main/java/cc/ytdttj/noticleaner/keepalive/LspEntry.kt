@@ -37,6 +37,10 @@ class LspEntry : XposedModule() {
             "com.android.systemui" -> {
                 runCatching { IslandUnlockFocusHook(this).onPackageLoaded(param) }
                     .onFailure { log(Log.WARN, TAG, "island focus hook init failed: $it") }
+                // Dev 16：岛代发——SystemUI 进程内接收 App 广播，以 systemui 身份
+                // notify 岛通知（三道认证门槛天然全免，方案 B 信任模型）
+                runCatching { SystemUIIslandDispatcher.install(this, param.defaultClassLoader) }
+                    .onFailure { log(Log.WARN, TAG, "island dispatcher init failed: $it") }
             }
             // island 分支：xmsf 焦点通知认证解锁（OS3 云认证 fail-closed，必须 hook）
             "com.xiaomi.xmsf" -> {
@@ -74,8 +78,12 @@ class LspEntry : XposedModule() {
 
     /**
      * 拦截器：参数（含父类字段）中找到 packageName == 本应用的 ServiceRecord 时，
-     * 不调用 proceed 直接返回 null → 阻止 stop/bringDown/stopServiceToken；
-     * 其余调用照常 proceed。
+     * 不调用 proceed 直接返回"阻断值" → 阻止 stop/stopServiceToken；其余调用照常 proceed。
+     *
+     * 2.0.1 Dev 10（P0-1）：返回值必须按方法返回类型映射，不能一律 null——
+     * `stopServiceTokenLocked` 返回 primitive boolean、`stopServiceLocked` 在部分版本返回 int，
+     * 拿 null 去填 primitive 槽位是未定义行为（取决于 lsplant/libxposed 实现，
+     * 极可能在 **system_server 内** NPE/转型崩溃）。阻断值一律走 [blockedResult]。
      */
     private class BlockStopHooker(private val xposed: XposedInterface) : XposedInterface.Hooker {
 
@@ -83,7 +91,7 @@ class LspEntry : XposedModule() {
             val isTarget = chain.getArgs().any { arg -> arg != null && packageNameOf(arg) == TARGET }
             if (!isTarget) return chain.proceed()
             xposed.log(Log.INFO, TAG, "blocked service stop attempt")
-            return null
+            return blockedResult(chain.executable as? Method)
         }
 
         /** 沿类层次找 packageName 字段（等价旧 XposedHelpers.getObjectField） */
@@ -117,6 +125,14 @@ class LspEntry : XposedModule() {
             hook(target).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(NmsBlockHooker(engine, sink))
             log(Log.INFO, TAG, "NMS enqueueNotificationInternal hooked (${target.parameterCount} params)")
+            // Dev 5 曾在此处调 ActivityThread.systemMain() 取 SystemContext 提交心跳——
+            // 【恶性 bug】system_server 启动中二次调用 systemMain 会 new 出第二个
+            // ActivityThread 并 attach，污染全局状态：SystemServer.startOtherServices 的
+            // installSystemProviders 拿到残缺 ClassLoader → ClassNotFoundException →
+            // system_server FATAL → 重启循环 → 安全模式（2026-09-25 真机事故，Dev 6 首次
+            // 重启时引爆，LSPosed 日志 4718 行铁证）。
+            // Dev 7 修复：心跳改由 NmsBlockHooker 首次拦截时提交（那时系统已稳定运行，
+            // Context 取自 hook 到的 NMS 实例本身，零额外反射）。
         } catch (t: Throwable) {
             log(Log.WARN, TAG, "NMS hook failed: $t")
         }
@@ -135,7 +151,7 @@ class LspEntry : XposedModule() {
 
     /**
      * 入队前拦截器：解析参数（pkg, Notification）→ FilterEngine 决策；
-     * 命中 → 回流记录 + 返回 skipResult（boolean 返回类型给 false，否则 null）阻断入队；
+     * 命中 → 回流记录 + 返回 [blockedResult]（按返回类型给零值，boolean→false）阻断入队；
      * 未命中/异常 → 照常 proceed。
      */
     private class NmsBlockHooker(
@@ -143,7 +159,32 @@ class LspEntry : XposedModule() {
         private val sink: ModuleLogSink,
     ) : XposedInterface.Hooker {
 
+        /** Dev 7：首次真实拦截时提交激活心跳（此前的 systemMain() 方案会导致 system_server 崩溃） */
+        @Volatile
+        private var heartbeatSent = false
+
         override fun intercept(chain: XposedInterface.Chain): Any? {
+            if (!heartbeatSent) {
+                heartbeatSent = true
+                runCatching {
+                    val ctx = chain.thisObject?.let { nmsContext(it) }
+                    if (ctx != null) {
+                        val hb = android.content.ContentValues().apply {
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_PACKAGE, TARGET)
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_CHANNEL, "")
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_TITLE, "system_server NMS hook OK")
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_CONTENT, "")
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_POST_TIME, System.currentTimeMillis())
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_PROBABILITY, 0f)
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_DECISION,
+                                cc.ytdttj.noticleaner.provider.ModuleLogProvider.LSP_ALIVE_DECISION)
+                            put(cc.ytdttj.noticleaner.provider.ModuleLogProvider.COL_KEY, "lsp:heartbeat")
+                        }
+                        sink.submit(ctx, hb)
+                        android.util.Log.i(TAG, "LSP heartbeat submitted (first NMS enqueue)")
+                    }
+                }.onFailure { android.util.Log.w(TAG, "heartbeat submit failed: $it") }
+            }
             val args = chain.args
             val notification = args.firstOrNull { it is android.app.Notification } as? android.app.Notification
             var pkg: String? = null
@@ -174,7 +215,7 @@ class LspEntry : XposedModule() {
                 put("key", "mod:${pkg.orEmpty()}:$postTime")
             }
             (chain.thisObject?.let { nmsContext(it) })?.let { sink.submit(it, values) }
-            return skipResult(chain.executable as Method)
+            return blockedResult(chain.executable as? Method)
         }
 
         private fun nmsContext(service: Any): android.content.Context? = try {
@@ -189,10 +230,6 @@ class LspEntry : XposedModule() {
             }
         }
 
-        private fun skipResult(method: Method): Any? = when (method.returnType) {
-            java.lang.Boolean.TYPE, java.lang.Boolean::class.java -> java.lang.Boolean.FALSE
-            else -> null
-        }
     }
 
     companion object {
@@ -202,11 +239,37 @@ class LspEntry : XposedModule() {
         private const val AS_CLASS = "com.android.server.am.ActiveServices"
         private const val NMS_CLASS = "com.android.server.notification.NotificationManagerService"
 
-        /** 覆盖多个 ROM 版本的方法名（存在哪个 hook 哪个，全部失败也不影响系统） */
+        /**
+         * 覆盖多个 ROM 版本的方法名（存在哪个 hook 哪个，全部失败也不影响系统）。
+         *
+         * **不再 hook `bringDownServiceLocked`**（Dev 10，P0-1）：它是 ServiceRecord 回收的
+         * 唯一收口，无条件阻断会让 force-stop、卸载、包更新清理路径上本应用的
+         * ServiceRecord 永远不被回收（ActiveServices 内部状态泄漏），且用户在系统设置里
+         * "强制停止"会直接失效——保活只需挡住 stop/stopServiceToken 这类主动停止调用。
+         */
         private val HOOK_METHODS = setOf(
             "stopServiceLocked",
-            "bringDownServiceLocked",
             "stopServiceTokenLocked",
         )
     }
+}
+
+/**
+ * 阻断返回值：按被 hook 方法的返回类型给"零值"，**绝不用 null 填 primitive 槽位**
+ * （2.0.1 Dev 10，P0-1）。`stopServiceTokenLocked` 返回 primitive boolean、
+ * `stopServiceLocked` 在部分版本返回 int —— null 落入 primitive 槽位是未定义行为，
+ * 取决于 lsplant/libxposed 实现，很可能在 **system_server 内** NPE/转型崩溃。
+ * void 与引用类型返回 null 是合规的。
+ */
+private fun blockedResult(method: Method?): Any? = when (method?.returnType) {
+    null -> null
+    java.lang.Boolean.TYPE, java.lang.Boolean::class.java -> java.lang.Boolean.FALSE
+    java.lang.Integer.TYPE, java.lang.Integer::class.java -> 0
+    java.lang.Long.TYPE, java.lang.Long::class.java -> 0L
+    java.lang.Short.TYPE, java.lang.Short::class.java -> 0.toShort()
+    java.lang.Byte.TYPE, java.lang.Byte::class.java -> 0.toByte()
+    java.lang.Double.TYPE, java.lang.Double::class.java -> 0.0
+    java.lang.Float.TYPE, java.lang.Float::class.java -> 0f
+    java.lang.Character.TYPE, java.lang.Character::class.java -> 0.toChar()
+    else -> null
 }

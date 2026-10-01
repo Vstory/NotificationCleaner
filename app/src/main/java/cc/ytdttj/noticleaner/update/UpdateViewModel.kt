@@ -99,6 +99,12 @@ class UpdateViewModel : ViewModel() {
                 result == null -> UpdateState.Error("检查失败：无法访问${if (ch == UpdateChannel.STABLE) " Gitee" else " GitHub"} 更新源")
                 result.release.versionCode > BuildConfig.VERSION_CODE -> {
                     lastCheckSource = result.source
+                    // Dev 9：更新检查结果落环形日志（UPDATE 模块，覆盖 24 小时）
+                    cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                        cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                        "发现新版本 ${result.release.versionName} (vc${result.release.versionCode}) " +
+                            "来源=${result.source} 当前=vc${BuildConfig.VERSION_CODE}",
+                    )
                     UpdateState.Available(result.release)
                 }
                 else -> UpdateState.UpToDate
@@ -131,9 +137,17 @@ class UpdateViewModel : ViewModel() {
                 val dest = File(appCtx.getExternalFilesDir(null), "update/$apkName")
                 val err = withContext(Dispatchers.IO) { directDownload(url, dest, release) }
                 if (err == null) {
+                    cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                        cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                        "APK 下载完成 $name → ${release.versionName}",
+                    )
                     _state.value = UpdateState.ReadyToInstall(release, dest)
                     return@launch
                 }
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                    "✗ APK 下载失败 [$name] $err",
+                )
                 android.util.Log.w("UpdateVM", "download failed [$name] $url: $err")
                 errors.add("$name $err")
                 dest.delete()
@@ -213,8 +227,15 @@ class UpdateViewModel : ViewModel() {
                             }
                         }
                         val actual = md.digest().joinToString("") { "%02x".format(it) }
+                        // 2.0.1 Dev 10（P1-6）：fail-closed——更新源未声明 sha256 一律拒绝安装。
+                        // 旧实现 `if (!expected.isNullOrBlank() && actual != expected)`，
+                        // 即 latest*.json 不带 sha256 字段时**完全不校验**就把 APK 交给安装器，
+                        // 最后一道完整性防线形同虚设（中间人只要删掉该字段即可）。
                         val expected = release.sha256?.lowercase()
-                        if (!expected.isNullOrBlank() && actual != expected) {
+                        if (expected.isNullOrBlank()) {
+                            return "更新源未声明 sha256，拒绝下载（完整性无法校验）"
+                        }
+                        if (actual != expected) {
                             return "sha256 不匹配（响应被篡改或 CDN 污染）"
                         }
                         if (dest.exists()) dest.delete()

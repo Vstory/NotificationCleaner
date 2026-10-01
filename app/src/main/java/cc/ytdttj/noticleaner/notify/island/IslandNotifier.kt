@@ -1,5 +1,6 @@
 package cc.ytdttj.noticleaner.notify.island
 
+import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.service.notification.StatusBarNotification
@@ -8,7 +9,20 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * 支付通知上岛总入口（islandplan.md §一）。
+ * 支付通知上岛总入口（islandplan.md §一；Dev 5 按 ref/HyperIsland 学习重构）。
+ *
+ * 发送模式（LSPosed only，Dev 5 起唯一模式）：
+ * 认证放行完全依赖 LSPosed 模块端 hook（keepalive/LspEntry）——
+ * - SystemUI：canShowFocus/canCustomFocus/checkSignatures 放行（IslandUnlockFocusHook）
+ * - xmsf：AuthSession.b(error) 强制成功（XmsfUnlockAuthHook）
+ * App 端不再做任何网络层绕过（Dev 4 及之前的 iptables DROP 盲窗已删除：
+ * OS3 fail-closed 实测无效，见 islandv2plan 风险 C）。
+ *
+ * 发送协议（借鉴 ref/HyperIsland 的 IslandDispatcherNotifier）：
+ * - 同 id 先 cancel 再 notify（clearBeforePost）：60s 超时窗内重复 id 属"更新"，
+ *   HyperOS 对更新不触发岛展示（2026-09-24 23:09 两次模拟测试同 id=9001 实证）
+ * - VISIBILITY_SECRET：岛展示但通知栏无痕；测试路径 showNotification=true
+ *   时 PRIVATE 留痕，判别认证拒绝
  *
  * 触发条件（三者同时满足）：包名白名单 + 文本含币种特征金额 + 通知已放行。
  * 所有路径静默降级，绝不影响通知净化主流程。
@@ -91,19 +105,10 @@ object IslandNotifier {
     @Volatile
     private var packages: Set<String> = DEFAULT_PACKAGES
 
-    @Volatile
-    private var bypassMs: Long = 100L
-
-    /** 免 LSPosed 模式：iptables DROP 盲窗（需 Root），关闭时走 xmsf auth hook */
-    @Volatile
-    private var dropBlind: Boolean = false
-
     /** 由设置收集协程回调（避免 island 依赖 DataStore 的循环） */
-    fun onSettings(enabled: Boolean, packages: Set<String>, bypassMs: Long, dropBlind: Boolean) {
+    fun onSettings(enabled: Boolean, packages: Set<String>) {
         this.enabled = enabled
         this.packages = packages.ifEmpty { DEFAULT_PACKAGES }
-        this.bypassMs = bypassMs.coerceIn(50, 500)
-        this.dropBlind = dropBlind
     }
 
     /** 同文本 60s 去重：银行类 App 常用同一通知槽位反复刷新 */
@@ -112,15 +117,27 @@ object IslandNotifier {
 
     /**
      * 放行通知的支付信息上岛。同步快速路径（解析/去重），
-     * 发送排队到盲窗执行器（串行）。
+     * 发送走 [IslandPoster]（clearBeforePost + visibility）。
      */
     fun maybePost(context: Context, sbn: StatusBarNotification, title: String, content: String) {
+        // Dev 16：初始化代发客户端（幂等——READY 监听 + PING 询问）
+        cc.ytdttj.noticleaner.notify.island.IslandDispatch.init(context)
+        // Dev 12 延迟排查：记录"我们开始处理这条原始通知"的时刻，
+        // 与 sbn.postTime（微信/银行发出通知的时刻）相减 = 系统投递滞后
+        val receivedAt = System.currentTimeMillis()
         // 模拟来源解析：Shell 通知的 island:<pkg> tag → 按模拟包名走白名单/图标/App名
         val pkg = effectivePackage(sbn)
         val inWhitelist = pkg in packages
         // 诊断：只对白名单相关包名记录，避免噪音
         if (inWhitelist || sbn.packageName == SHELL_PACKAGE) {
-            IslandTrace.log("收到通知 pkg=$pkg raw=${sbn.packageName} title=${title.take(20)}")
+            // Dev 12：补正文片段——排查"扣款通知没上岛"时，只有标题看不出金额在哪一段
+            IslandTrace.log(
+                "收到通知 pkg=$pkg raw=${sbn.packageName}" +
+                    " post=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
+                    " lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(receivedAt - sbn.postTime)}" +
+                    " title=${title.take(20)}" +
+                    " content=${content.take(60)}",
+            )
         }
         if (!enabled) {
             if (inWhitelist) IslandTrace.log("✗ 总开关未开启，跳过")
@@ -141,18 +158,22 @@ object IslandNotifier {
             IslandTrace.log("✗ 金额解析失败：'$title' / '${content.take(30)}'")
             return
         }
-        IslandTrace.log("金额解析: ${payment.capsuleText.trim()} 方向=${payment.direction} 折算=${payment.convertedCnyText ?: "无"}")
+        IslandTrace.log("金额解析: ${payment.capsuleText.trim()} 方向=${payment.direction} 折算=${payment.convertedCnyText ?: "无"} 原文='${title.take(16)}'/'${content.take(48)}'")
 
         val sig = "$pkg|${title.hashCode()}|${content.hashCode()}"
         val now = System.currentTimeMillis()
-        val last = recentPosted[sig]
-        if (last != null && now - last < DEDUP_WINDOW_MS) {
-            IslandTrace.log("✗ 60s 内重复推送，跳过")
-            return
+        // 原子去重：同一条通知可能被系统投递多次（并发回调），
+        // check-then-put 两步在并发下双双通过会重复上岛（2026-09-25 10:50 id=9002/9003 实证）
+        val prev = recentPosted.putIfAbsent(sig, now)
+        if (prev != null) {
+            if (now - prev < DEDUP_WINDOW_MS) {
+                IslandTrace.log("✗ 60s 内重复推送，跳过")
+                return
+            }
+            recentPosted[sig] = now // 过期条目刷新
         }
         // 清理过期条目，防长期驻留膨胀
         recentPosted.entries.removeIf { now - it.value > DEDUP_WINDOW_MS }
-        recentPosted[sig] = now
 
         val appName = PACKAGE_LABELS[pkg] ?: appLabel(context, pkg)
         val icon = runCatching {
@@ -175,7 +196,7 @@ object IslandNotifier {
                 content = content,
                 sourceIcon = icon,
                 contentIntent = contentIntent,
-                islandTimeoutSec = ISLAND_TIMEOUT_SEC,
+                islandTimeoutSec = Int.MAX_VALUE, // Dev 16：结果岛常驻（property=2），直到"已完成"
                 notificationId = id,
             )
         }.getOrElse {
@@ -183,14 +204,30 @@ object IslandNotifier {
             Log.w(TAG, "build island notification failed", it); return
         }
 
-        IslandBypassExecutor.post(context, id, notification, bypassMs, dropBlind)
-        IslandTrace.log("岛通知已入队 (id=$id, 盲窗=${bypassMs}ms)，等待盲窗执行器结果…")
+        // Dev 16（方案 B）：优先 SystemUI 代发——以 systemui 身份 notify，白名单/签名/
+        // 云认证三道门天然全免（认证等待归零）；接收器未就绪时回退自身 notify + 兜底。
+        val dispatched = IslandDispatch.tryDispatch(context, notification, id)
+        if (!dispatched) {
+            IslandPoster.post(context, id, notification)
+        }
+        // Dev 12 延迟排查：一条记录里给出完整时间链——
+        //   srcPost = 原始动账通知（微信/银行）的发布时间
+        //   lag     = 从原始通知发布 → 我们提交岛通知（含系统投递积压 + App 处理）
+        //   took    = 纯 App 内部耗时（收到 → 提交），用于证明 App 侧是否拖后腿
+        val postedAt = System.currentTimeMillis()
+        IslandTrace.log(
+            "岛通知已提交系统 (id=$id, " +
+                (if (dispatched) "SystemUI 代发" else "LSPosed 放行认证") +
+                ", srcPost=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
+                ", lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(postedAt - sbn.postTime)}" +
+                ", took=${postedAt - receivedAt}ms)",
+        )
     }
 
     /**
      * 管线直接注入（islandv2plan P2-3，主模拟路径）：
      * 不依赖系统通知投递（HyperOS 不把 shell 通知投给第三方监听器），直接走
-     * 金额解析 → 岛通知构建 → 盲窗发送。测试路径 showNotification=true 留痕。
+     * 金额解析 → 岛通知构建 → 发送。测试路径 showNotification=true 留痕。
      *
      * delayMs：延迟发送（默认 5 秒）——HyperOS 前台抑制：App 自己在前台时不渲染
      * 它的超级岛，岛要等应用退后台才出现（此时 islandFirstFloat 展开窗口已错过）。
@@ -238,22 +275,23 @@ object IslandNotifier {
                     notificationId = id,
                 )
                 if (delayMs > 0) Thread.sleep(delayMs) // 等用户回到桌面，避开前台抑制
-                IslandBypassExecutor.post(appContext, id, notif, bypassMs, dropBlind)
+                IslandPoster.post(appContext, id, notif)
                 "已注入管线（金额 ${payment.capsuleText.trim()}），结果见诊断日志与通知栏"
             }.getOrElse { "注入失败: ${it.message}" }
             android.os.Handler(android.os.Looper.getMainLooper()).post { onResult(result) }
         }.start()
     }
 
-    /** 设置页"发送测试岛"：走完整盲窗链路，结果回调主线程 */
+    /** 设置页"发送测试岛"：走完整 LSPosed 链路，结果回调主线程 */
     fun sendTest(context: Context, onResult: (String) -> Unit) {
-        if (!IslandBypassExecutor.isReady()) {
-            onResult("Shizuku 未授权：上岛需要 Shizuku（或 Root）授权")
-            return
-        }
         val p = PaymentExtractor.extract("测试支付", "您已支付 ¥25.00") ?: run {
             onResult("测试解析失败")
             return
+        }
+        // 不固定 id：60s 岛超时内连续测试用同一 id 会变成"更新通知"，
+        // HyperOS 对更新不触发岛展示（Dev 4 修复，Dev 5 重构保留）
+        val id = nextId.updateAndGet { cur ->
+            if (cur >= NOTIF_ID_LAST) NOTIF_ID_FIRST else cur + 1
         }
         val appContext = context.applicationContext
         Thread {
@@ -268,11 +306,13 @@ object IslandNotifier {
                     contentIntent = null,
                     islandTimeoutSec = 60,
                     showNotification = true,
-                    notificationId = NOTIF_ID_FIRST,
+                    notificationId = id,
                 )
                 Thread.sleep(5000) // 等用户回到桌面，避开前台抑制（岛在 App 前台时不渲染）
-                IslandBypassExecutor.post(appContext, NOTIF_ID_FIRST, notif, bypassMs, dropBlind)
-                "测试岛通知已发送"
+                // Dev 16：同样优先 SystemUI 代发（测试岛用于验证整条链路）
+                val dispatched = IslandDispatch.tryDispatch(appContext, notif, id)
+                if (!dispatched) IslandPoster.post(appContext, id, notif)
+                if (dispatched) "测试岛已通过 SystemUI 代发" else "测试岛通知已发送（LSPosed 放行认证）"
             }.getOrElse { "发送失败: ${it.message}" }
             android.os.Handler(android.os.Looper.getMainLooper()).post { onResult(result) }
         }.start()
@@ -287,10 +327,7 @@ object IslandNotifier {
     /** 岛设置快照（DiagExporter 诊断头用，1.3.2 诊断补盲） */
     fun diagSnapshot(): String = buildString {
         appendLine("岛开关: $enabled")
-        appendLine(
-            "岛盲窗: ${bypassMs}ms 模式=" +
-                if (dropBlind) "iptables DROP（免 LSPosed，需 Root）" else "xmsf auth hook（LSPosed）",
-        )
+        appendLine("岛模式: LSPosed（SystemUI 白名单 hook + xmsf 云认证 hook）")
         appendLine("岛白名单(${packages.size}): ${packages.joinToString()}")
     }
 }
