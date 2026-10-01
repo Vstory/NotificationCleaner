@@ -313,7 +313,13 @@ private fun MainNavHost(navController: androidx.navigation.NavHostController, mo
             )
         }
         composable("settings") {
-            SettingsScreen(onOpenStats = { navController.navigate("stats/$it") })
+            SettingsScreen(
+                onOpenStats = { navController.navigate("stats/$it") },
+                onOpenOpenSource = { navController.navigate("opensource") },
+            )
+        composable("opensource") {
+            cc.ytdttj.noticleaner.ui.settings.OpenSourceScreen(onBack = { navController.popBackStack() })
+        }
         }
         composable("stats/{mode}") { entry ->
             val mode = entry.arguments?.getString("mode") ?: "filtered"

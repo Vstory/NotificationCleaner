@@ -470,7 +470,11 @@ class SettingsViewModel(
 }
 
 @Composable
-fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewModel(factory = settingsVmFactory())) {
+fun SettingsScreen(
+    onOpenStats: (String) -> Unit,
+    onOpenOpenSource: () -> Unit = {},
+    vm: SettingsViewModel = viewModel(factory = settingsVmFactory()),
+) {
     val threshold by vm.threshold.collectAsState()
     val intercept by vm.interceptMode.collectAsState()
     val excludeRecents by vm.excludeFromRecents.collectAsState()
@@ -1113,6 +1117,27 @@ fun SettingsScreen(onOpenStats: (String) -> Unit, vm: SettingsViewModel = viewMo
                         )
                     }
                 }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        // ---- 参考开源项目（Dev 17）：高级功能块下方，跳转开源项目列表 ----
+        cc.ytdttj.noticleaner.ui.glass.NcCard(
+            Modifier.fillMaxWidth().clickable { onOpenOpenSource() },
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "参考开源项目",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "本项目的借鉴、参考与依赖来源",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text("›", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
             }
         }
         Spacer(Modifier.height(12.dp))
