@@ -120,6 +120,8 @@ object IslandNotifier {
      * 发送走 [IslandPoster]（clearBeforePost + visibility）。
      */
     fun maybePost(context: Context, sbn: StatusBarNotification, title: String, content: String) {
+        // Dev 16：初始化代发客户端（幂等——READY 监听 + PING 询问）
+        cc.ytdttj.noticleaner.notify.island.IslandDispatch.init(context)
         // Dev 12 延迟排查：记录"我们开始处理这条原始通知"的时刻，
         // 与 sbn.postTime（微信/银行发出通知的时刻）相减 = 系统投递滞后
         val receivedAt = System.currentTimeMillis()
@@ -194,7 +196,7 @@ object IslandNotifier {
                 content = content,
                 sourceIcon = icon,
                 contentIntent = contentIntent,
-                islandTimeoutSec = ISLAND_TIMEOUT_SEC,
+                islandTimeoutSec = Int.MAX_VALUE, // Dev 16：结果岛常驻（property=2），直到"已完成"
                 notificationId = id,
             )
         }.getOrElse {
@@ -202,14 +204,20 @@ object IslandNotifier {
             Log.w(TAG, "build island notification failed", it); return
         }
 
-        IslandPoster.post(context, id, notification)
+        // Dev 16（方案 B）：优先 SystemUI 代发——以 systemui 身份 notify，白名单/签名/
+        // 云认证三道门天然全免（认证等待归零）；接收器未就绪时回退自身 notify + 兜底。
+        val dispatched = IslandDispatch.tryDispatch(context, notification, id)
+        if (!dispatched) {
+            IslandPoster.post(context, id, notification)
+        }
         // Dev 12 延迟排查：一条记录里给出完整时间链——
         //   srcPost = 原始动账通知（微信/银行）的发布时间
         //   lag     = 从原始通知发布 → 我们提交岛通知（含系统投递积压 + App 处理）
         //   took    = 纯 App 内部耗时（收到 → 提交），用于证明 App 侧是否拖后腿
         val postedAt = System.currentTimeMillis()
         IslandTrace.log(
-            "岛通知已提交系统 (id=$id, LSPosed 放行认证" +
+            "岛通知已提交系统 (id=$id, " +
+                (if (dispatched) "SystemUI 代发" else "LSPosed 放行认证") +
                 ", srcPost=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
                 ", lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(postedAt - sbn.postTime)}" +
                 ", took=${postedAt - receivedAt}ms)",
@@ -301,8 +309,10 @@ object IslandNotifier {
                     notificationId = id,
                 )
                 Thread.sleep(5000) // 等用户回到桌面，避开前台抑制（岛在 App 前台时不渲染）
-                IslandPoster.post(appContext, id, notif)
-                "测试岛通知已发送（LSPosed 放行认证）"
+                // Dev 16：同样优先 SystemUI 代发（测试岛用于验证整条链路）
+                val dispatched = IslandDispatch.tryDispatch(appContext, notif, id)
+                if (!dispatched) IslandPoster.post(appContext, id, notif)
+                if (dispatched) "测试岛已通过 SystemUI 代发" else "测试岛通知已发送（LSPosed 放行认证）"
             }.getOrElse { "发送失败: ${it.message}" }
             android.os.Handler(android.os.Looper.getMainLooper()).post { onResult(result) }
         }.start()

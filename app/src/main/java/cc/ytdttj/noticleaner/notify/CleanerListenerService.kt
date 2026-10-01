@@ -247,6 +247,13 @@ class CleanerListenerService : NotificationListenerService() {
     /** 实时回调与重连补扫共用入口；fromBackfill 决定走慢速补扫通道（1.2.1） */
     private fun dispatch(sbn: StatusBarNotification, fromBackfill: Boolean) {
         if (sbn.packageName == SELF_PACKAGE) return
+        // Dev 16：排除自己通过 SystemUI 代发的岛通知（发送者=com.android.systemui，
+        // extras 带 nc_island_dispatched 标记）——不进过滤管线/通知历史，避免噪音
+        if (sbn.packageName == "com.android.systemui" &&
+            sbn.notification?.extras?.getBoolean("nc_island_dispatched") == true
+        ) {
+            return
+        }
         // 1.3.2（P3-2）：每通知一次的日志在 release 下门控，省 logd 写入与字符串分配
         if (cc.ytdttj.noticleaner.BuildConfig.DEBUG) {
             android.util.Log.i("NCWatch", "posted pkg=${sbn.packageName} connected=$listenerConnected backfill=$fromBackfill")

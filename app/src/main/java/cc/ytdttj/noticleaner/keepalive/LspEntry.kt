@@ -37,6 +37,10 @@ class LspEntry : XposedModule() {
             "com.android.systemui" -> {
                 runCatching { IslandUnlockFocusHook(this).onPackageLoaded(param) }
                     .onFailure { log(Log.WARN, TAG, "island focus hook init failed: $it") }
+                // Dev 16：岛代发——SystemUI 进程内接收 App 广播，以 systemui 身份
+                // notify 岛通知（三道认证门槛天然全免，方案 B 信任模型）
+                runCatching { SystemUIIslandDispatcher.install(this, param.defaultClassLoader) }
+                    .onFailure { log(Log.WARN, TAG, "island dispatcher init failed: $it") }
             }
             // island 分支：xmsf 焦点通知认证解锁（OS3 云认证 fail-closed，必须 hook）
             "com.xiaomi.xmsf" -> {
