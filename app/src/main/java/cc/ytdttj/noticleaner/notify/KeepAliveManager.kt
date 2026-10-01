@@ -173,6 +173,14 @@ interface ShellExecutor {
     suspend fun exec(cmd: String): String
 }
 
+/**
+ * shell 命令超时（Dev 13）：不再返回错误字符串，而是抛出本异常。
+ * 动机：修复流程是 6+ 条命令串行，旧实现超时只返回字符串、循环继续，
+ * 通道僵死（Shizuku 服务失效 / su 等授权）时**每条都白等满 10 秒**，
+ * 用户看到的就是"几个命令全都超时强杀"。现在第一条超时立即抛出，调用方 fail-fast。
+ */
+class ShellTimeoutException(message: String) : Exception(message)
+
 /** Root：su -c */
 object RootExecutor : ShellExecutor {
     override suspend fun exec(cmd: String): String = kotlinx.coroutines.withContext(
@@ -196,8 +204,12 @@ object ShizukuExecutor : ShellExecutor {
             String::class.java,
         )
         m.isAccessible = true
-        val p = m.invoke(null, arrayOf("sh", "-c", cmd), null, null) as Process
-        readProcess(p, cmd)
+        // Dev 13：追加完成标记行——Sui 对"无输出命令"（appops set 等）的 stdout 流关闭
+        // 通知会丢失，靠 EOF 判定完成会永久阻塞；读到标记行即视为命令完成。
+        // $? 是远程 sh 的变量，Kotlin 侧用 \$ 保留字面量。
+        val wrapped = "$cmd; echo __NC_DONE_\$?__"
+        val p = m.invoke(null, arrayOf("sh", "-c", wrapped), null, null) as Process
+        readProcess(p, cmd, doneMarker = "__NC_DONE_")
     }
 }
 
@@ -213,32 +225,66 @@ object ShizukuExecutor : ShellExecutor {
  * 现在：stderr 交给独立守护线程排空，主线程只读 stdout，[EXEC_TIMEOUT_SEC] 到点即
  * `destroyForcibly()` 并返回超时提示（调用方按失败处理，绝不无限等待）。
  */
-private const val EXEC_TIMEOUT_SEC = 10L
+/** 输出超时（Dev 13）：30 秒内没等到"命令完成"才算真挂死 */
+private const val OUTPUT_TIMEOUT_MS = 30_000L
 
-private fun readProcess(p: Process, cmd: String): String {
-    val errBuf = StringBuilder()
+/**
+ * 读取远程 shell 输出（Sui/Shizuku 兼容版，Dev 13 第三次修正）。
+ *
+ * "完成"的判定演进：
+ * ① waitFor(20s) —— Sui server 不回传进程退出事件，**永远超时**（实测：命令其实
+ *    执行成功，输出都读到了，`settings get` 的返回值就在超时提示里）；
+ * ② stdout EOF —— 有输出的命令正常，但**无输出命令**（如 `appops set`）的流关闭
+ *    通知也会丢失 → readText 干等（实测：第一条 dumpsys 秒过、第二条 appops 卡死）；
+ * ③ **完成标记行**（本版）：命令包装为 `<cmd>; echo __NC_DONE_$?__`，读线程逐行读、
+ *    见到标记行即判定完成并主动结束，**彻底不依赖流关闭与进程退出**。
+ *    [doneMarker] 为 null 时退回 EOF 模式（本地 su 的 ProcessBuilder 管道关闭正常）。
+ *
+ * 逐行读、break 后**不 close** 流（binder 流的 close 可能阻塞），fd 由进程销毁回收。
+ * StringBuffer：超时分支与读线程可能并发访问。
+ */
+private fun readProcess(p: Process, cmd: String, doneMarker: String? = null): String {
+    val outBuf = StringBuffer()
+    val errBuf = StringBuffer()
+    val doneLine = java.util.concurrent.atomic.AtomicReference<String?>(null)
+    val outThread = Thread({
+        runCatching {
+            val r = p.inputStream.bufferedReader()
+            while (true) {
+                val line = r.readLine() ?: break
+                if (doneMarker != null && line.trim().startsWith(doneMarker)) {
+                    doneLine.set(line.trim())
+                    break
+                }
+                outBuf.append(line).append('\n')
+            }
+        }
+    }, "shell-stdout").apply { isDaemon = true; start() }
     val errThread = Thread({
         runCatching { p.errorStream.bufferedReader().use { errBuf.append(it.readText()) } }
     }, "shell-stderr").apply { isDaemon = true; start() }
-    val out = try {
-        p.inputStream.bufferedReader().use { it.readText() }
-    } catch (t: Throwable) {
-        "读取输出失败: $t"
-    }
-    val finished = runCatching { p.waitFor(EXEC_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS) }
-        .getOrDefault(false)
-    if (!finished) {
+
+    outThread.join(OUTPUT_TIMEOUT_MS)
+    if (outThread.isAlive) {
         runCatching { p.destroyForcibly() }
         errThread.join(500)
-        return buildString {
-            append("执行超时（${EXEC_TIMEOUT_SEC}s，已强杀）：$cmd")
-            if (out.isNotBlank()) append("\n").append(out.trim().takeLast(500))
-        }
+        throw ShellTimeoutException(
+            "命令无响应（${OUTPUT_TIMEOUT_MS / 1000}s 未完成，已强杀）：$cmd" +
+                (if (outBuf.isNotEmpty()) "｜输出: ${outBuf.toString().trim().takeLast(200)}" else "") +
+                "｜请检查 Shizuku 服务是否在运行 / Root 授权是否被拒绝",
+        )
     }
+
+    // 清理：远程进程可能永远不报告退出（Sui 实测如此），尽力 destroy，不影响成功判定
+    val exited = runCatching { p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false)
+    if (!exited) runCatching { p.destroyForcibly() }
     errThread.join(1_000)
+
+    val exitNote = doneLine.get()?.let { "（exit=${it.removePrefix("__NC_DONE_").removeSuffix("__")}）" } ?: ""
     return buildString {
-        if (out.isNotBlank()) append(out.trim())
-        if (errBuf.isNotBlank()) append(if (isEmpty()) "" else "\n").append("ERR: ").append(errBuf.trim())
+        if (outBuf.isNotEmpty()) append(outBuf.toString().trim())
+        if (errBuf.isNotEmpty()) append(if (isEmpty()) "" else "\n").append("ERR: ").append(errBuf.toString().trim())
+        if (exitNote.isNotEmpty()) append(if (isEmpty()) "" else "\n").append(exitNote)
     }
 }
 
@@ -250,7 +296,15 @@ suspend fun runKeepAliveCommands(
     val sb = StringBuilder()
     for (cmd in KeepAliveCommands.commands(context)) {
         onProgress(cmd)
-        val out = runCatching { executor.exec(cmd) }.getOrElse { "执行失败: $it" }
+        val out = try {
+            executor.exec(cmd)
+        } catch (t: ShellTimeoutException) {
+            // Dev 13：fail-fast——通道僵死时逐条白等没有意义
+            sb.append("$ ").appendLine(cmd).appendLine("✗ $t")
+            return sb.toString().trim() + "\n\n（已中止：shell 通道无响应，请检查 Shizuku 服务 / Root 授权后重试）"
+        } catch (t: Throwable) {
+            "执行失败: $t"
+        }
         sb.append("$ ").appendLine(cmd)
         sb.append(if (out.isBlank()) "(无输出)" else out).appendLine().appendLine()
     }
