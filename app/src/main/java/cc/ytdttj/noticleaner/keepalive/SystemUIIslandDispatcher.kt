@@ -93,7 +93,7 @@ internal object SystemUIIslandDispatcher {
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(c: Context, intent: Intent) {
                     when (intent.action) {
-                        ACTION_DISPATCH_ISLAND -> handleDispatch(c, intent)
+                        ACTION_DISPATCH_ISLAND -> handleDispatch(c, intent, module)
                         ACTION_DISPATCH_PING -> answerReady(c)
                     }
                 }
@@ -129,10 +129,11 @@ internal object SystemUIIslandDispatcher {
         }
     }
 
-    private fun handleDispatch(ctx: Context, intent: Intent) {
+    private fun handleDispatch(ctx: Context, intent: Intent, module: XposedModule) {
         val inner = intent.getBundleExtra(EXTRA_INNER) ?: return
         if (!inner.containsKey("miui.focus.param")) return // 非岛通知防御
         val id = intent.getIntExtra(EXTRA_ID, 0)
+        module.log(android.util.Log.INFO, TAG, "island dispatched as systemui id=$id")
         val nm = ctx.getSystemService(NotificationManager::class.java)
         // HyperIsland 经验：同 id 先 cancel 再 notify，避免被系统当作"更新"不触发展示
         runCatching { nm.cancel(id) }

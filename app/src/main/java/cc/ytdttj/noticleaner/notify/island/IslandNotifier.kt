@@ -208,6 +208,7 @@ object IslandNotifier {
         // 云认证三道门天然全免（认证等待归零）；接收器未就绪时回退自身 notify + 兜底。
         val dispatched = IslandDispatch.tryDispatch(context, notification, id)
         if (!dispatched) {
+            IslandTrace.log("代发未就绪（SystemUI 接收器未确认 READY），回退自身 notify + 兜底路径")
             IslandPoster.post(context, id, notification)
         }
         // Dev 12 延迟排查：一条记录里给出完整时间链——

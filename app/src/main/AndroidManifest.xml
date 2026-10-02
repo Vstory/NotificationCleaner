@@ -96,11 +96,6 @@
                 android:value="notification_filter_keepalive" />
         </service>
 
-        <!-- island 分支：超级岛"已完成"按钮（仅本应用 PendingIntent 可触发） -->
-        <receiver
-            android:name=".notify.island.IslandDismissReceiver"
-            android:exported="false" />
-
         <!-- 1.4.0 Dev 15：监听失效提醒的按钮动作（修复/权限设置），仅本应用 PendingIntent -->
         <receiver
             android:name=".notify.ListenerRepairActionReceiver"

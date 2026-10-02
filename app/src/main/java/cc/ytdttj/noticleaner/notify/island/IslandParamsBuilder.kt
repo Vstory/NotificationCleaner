@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import cc.ytdttj.noticleaner.notify.KeepAliveService
 import org.json.JSONObject
 
 /**
@@ -107,13 +108,17 @@ object IslandParamsBuilder {
         }
         val picInfo = JSONObject().put("type", 1).put("pic", PIC_APP)
 
-        // 金额行："已完成"按钮（点击 → 广播取消通知 → 岛清除）
-        val actionKey = "miui.focus.action_dismiss"
-        val dismissPi = PendingIntent.getBroadcast(
+        // 金额行："已完成"按钮（点击 → 保活服务取消通知 → 岛清除）。
+        // 2.1.2：对齐 SignalDock 实证实现——此前用自定义 key（miui.focus.action_dismiss）+
+        // PendingIntent.getBroadcast，HyperOS 点击后无反应；SignalDock 用「已知槽位
+        // miui.focus.action_main + PendingIntent.getService」且实测可点，照搬这两个要素。
+        val actionKey = "miui.focus.action_main"
+        val dismissPi = PendingIntent.getService(
             context,
             notificationId,
-            Intent(context, IslandDismissReceiver::class.java).apply {
-                putExtra(IslandDismissReceiver.EXTRA_NOTIF_ID, notificationId)
+            Intent(context, KeepAliveService::class.java).apply {
+                action = KeepAliveService.ACTION_ISLAND_DISMISS
+                putExtra(KeepAliveService.EXTRA_ISLAND_NOTIF_ID, notificationId)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

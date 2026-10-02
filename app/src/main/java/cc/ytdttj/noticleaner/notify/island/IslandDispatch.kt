@@ -31,6 +31,7 @@ object IslandDispatch {
 
     /** App 进程内注册 READY 监听 + 发 PING 询问（ServiceLocator/App 初始化时调用一次） */
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (!receiverRegistered.compareAndSet(false, true)) return
         val appContext = context.applicationContext
         runCatching {
@@ -39,19 +40,34 @@ object IslandDispatch {
                     override fun onReceive(c: Context?, intent: Intent?) {
                         if (intent?.action == SystemUIIslandDispatcher.ACTION_DISPATCH_READY) {
                             ready.set(true)
+                            cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                                cc.ytdttj.noticleaner.diagnostics.LogModules.ISLAND,
+                                "岛代发接收器已就绪（SystemUI READY）——后续岛通知走 SystemUI 代发",
+                            )
                         }
                     }
                 },
                 IntentFilter(SystemUIIslandDispatcher.ACTION_DISPATCH_READY),
-                Context.RECEIVER_NOT_EXPORTED,
+                // 2.1.2：必须 EXPORTED——READY 是 SystemUI 进程发来的跨应用广播，
+                // NOT_EXPORTED 会把它拦掉（此前的 bug：ready 永远 false，代发从未启用）。
+                // 风险可控：伪造 READY 顶多让岛通知走代发路径，真正把关的是
+                // SystemUI 侧接收器的 signature 权限校验。
+                Context.RECEIVER_EXPORTED,
             )
-            // PING：SystemUI 若已就绪会回 READY（App 晚于 SystemUI 启动时靠这个补上）
-            appContext.sendBroadcast(
+        }
+    }
+
+    /** 询问 SystemUI 接收器是否就绪（未就绪时每次岛通知都会重问，接收器可随时上线） */
+    private fun ping() {
+        runCatching {
+            appContext?.sendBroadcast(
                 Intent(SystemUIIslandDispatcher.ACTION_DISPATCH_PING)
                     .setPackage("com.android.systemui"),
             )
         }
     }
+
+    @Volatile private var appContext: Context? = null
 
     /** 接收器是否已确认就绪（未就绪时调用方回退自身 notify 路径） */
     fun isReady(): Boolean = ready.get()
@@ -66,7 +82,12 @@ object IslandDispatch {
      * @return true = 已交由代发；false = 接收器未就绪（调用方回退自身路径）
      */
     fun tryDispatch(context: Context, notification: Notification, notificationId: Int): Boolean {
-        if (!ready.get()) return false
+        if (!ready.get()) {
+            // 每次都重问（PING 很便宜）：SystemUI 可能晚于 App 注册接收器，
+            // 只在 init 时问一次的话，那一次丢失就永远回退旧路径
+            ping()
+            return false
+        }
         val inner = notification.extras ?: return false
         if (!inner.containsKey("miui.focus.param")) return false
         val intent = Intent(SystemUIIslandDispatcher.ACTION_DISPATCH_ISLAND)
