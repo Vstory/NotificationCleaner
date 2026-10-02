@@ -17,8 +17,8 @@ android {
         // —— Android 12+ 动态取色全量可用，且无需为低版本维护取色降级路径
         minSdk = 33
         targetSdk = 36
-        versionCode = 72
-        versionName = "2.1.2"
+        versionCode = 74
+        versionName = "2.2.0 Dev 2"
         // 1.3.2（P3-7③）：只保留 arm64-v8a——剔除其余架构（armeabi-v7a/x86/x86_64）
         // 的原生库，精简 APK 体积；目标设备为真机 ARM64（模块端同样仅注入 arm64 设备）
         ndk {
@@ -44,14 +44,16 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        // 应用内更新候选源（1.3.2 更新分流）：
+        // 应用内更新候选源（1.3.2 更新分流；2.2.0 Dev 2 调整 Dev 检查源）：
         //   稳定版通道 → Gitee 的 latest.json（仅正式版，随正式版发版更新）
-        //   Dev 版通道 → GitHub 的 latest-dev.json（最新 Dev 版，随 Dev 发版更新）
-        // GitHub 上 latest.json 仍保持稳定版信息（= 稳定版在 GitHub 的镜像），
-        // 即 GitHub 同时承载稳定版 + Dev 版，Gitee 仅稳定版。
+        //   Dev 版通道 → GitHub 仓库 dev 分支的 latest-dev.json（最新 Dev 版，随 Dev 发版更新）
+        // 2.2.0 Dev 2：Dev 检查源由 main 分支改为 dev 分支——Dev 发版只需在 dev 分支
+        // 提交 latest-dev.json + 建 GitHub Release，不再需要切回 main 单独推送。
+        // GitHub 上 main 的 latest.json 仍保持稳定版信息（= 稳定版在 GitHub 的镜像），
+        // 即稳定版 = Gitee/GitHub main 双源，Dev 版 = GitHub dev 分支单源。
         // 下载 URL 按版本号模板构造：{base}/v{versionName 去空格}/NotiCleaner-{versionName 去空格}.apk
         buildConfigField("String", "UPDATE_LATEST_GITHUB",
-            "\"https://raw.githubusercontent.com/ytdttj/NotificationCleaner/main/latest-dev.json\"")
+            "\"https://raw.githubusercontent.com/ytdttj/NotificationCleaner/dev/latest-dev.json\"")
         buildConfigField("String", "UPDATE_LATEST_GITEE",
             "\"https://gitee.com/ytdttj/NotiCleaner/raw/main/latest.json\"")
         buildConfigField("String", "UPDATE_APK_GITHUB",
