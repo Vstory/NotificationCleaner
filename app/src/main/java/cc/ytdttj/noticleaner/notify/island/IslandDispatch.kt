@@ -73,6 +73,27 @@ object IslandDispatch {
     fun isReady(): Boolean = ready.get()
 
     /**
+     * 请求 SystemUI 侧取消（代发）岛通知——「已完成」按钮的落地动作（2.2.0 Dev 3）。
+     *
+     * 代发通知由 systemui 进程发出，App 的 `NotificationManager.cancel(id)` 对它是
+     * **空操作**（Android 按包名隔离通知，App 只能取消自己名下的）。因此必须把取消
+     * 动作送回 SystemUI 执行。未就绪（接收器未注册）时静默失败——此时岛通知本就不归
+     * SystemUI 所有，App 侧那次 cancel 会生效。
+     */
+    fun requestSystemUiDismiss(context: Context, notificationId: Int) {
+        if (!ready.get()) return
+        runCatching {
+            context.applicationContext.sendBroadcast(
+                Intent(SystemUIIslandDispatcher.ACTION_DISPATCH_DISMISS)
+                    .setPackage("com.android.systemui")
+                    .putExtra(SystemUIIslandDispatcher.EXTRA_ID, notificationId),
+            )
+        }.onFailure {
+            android.util.Log.w("IslandDispatch", "dismiss request failed: $it")
+        }
+    }
+
+    /**
      * 通过 SystemUI 代发岛通知。
      *
      * [notification] 为 [IslandParamsBuilder.build] 的产物——真正跨进程的是它的

@@ -1,6 +1,6 @@
 {
-  "versionCode": 74,
-  "versionName": "2.2.0 Dev 2",
-  "notes": "【新增】\n1.作用域热重载（实验性）：模块更新后 SystemUI 与小米服务框架自动热重载，无需重启手机（需 LSPosed Vector 及以上框架）\n2.Dev 更新通道改读仓库 dev 分支的 latest-dev.json，Dev 发版不再依赖 main 分支\n\n装完请重启一次（首次建立框架记账，之后模块更新即可热生效）。",
-  "sha256": "abdb34f5c15172259ecc27f99a84a11f373e38771172222e507463741c125eb4"
+  "versionCode": 75,
+  "versionName": "2.2.0 Dev 3",
+  "notes": "【修复】\n1.岛上「已完成」按钮点了没反应：按钮事件其实已收到，但岛通知由系统界面身份代发，App 自己取消不了——现改由系统界面进程执行取消\n\n装完请重启一次（模块 hook 重新注入）。",
+  "sha256": "a83afe9a3db27dfab59f31123c93822bec57012e539bb084ae977342b98f19ff"
 }

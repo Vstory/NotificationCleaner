@@ -23,6 +23,11 @@ import io.github.libxposed.api.XposedInterface
  * 安全：接收器注册时要求 signature 权限 `PERMISSION_DISPATCH_ISLAND`（模块 APK 声明
  * 并自动持有，第三方无法伪造），框架在 AMS 层强制校验发送方。
  *
+ * 取消路径（2.2.0 Dev 3）：岛的「已完成」按钮点击由 App 侧收到后广播
+ * [ACTION_DISPATCH_DISMISS] 回来——代发通知的 owner 是 systemui，App 自己 cancel
+ * 是空操作（真机实测：App 打了"已取消"日志，SystemUI 侧从未出现 canceled，岛不消），
+ * 详见 [handleDismiss]。
+ *
  * 注册时机（2.2.0 Dev 1 热重载改造，两条路径共用 [doRegister]）：
  * - 首次加载：hook `Application.attach` / `onCreate`（SystemUIApplication 会走基类），
  *   拿到 Context 后注册；
@@ -40,6 +45,7 @@ internal object SystemUIIslandDispatcher {
     const val ACTION_DISPATCH_ISLAND = "cc.ytdttj.noticleaner.ACTION_DISPATCH_ISLAND"
     const val ACTION_DISPATCH_PING = "cc.ytdttj.noticleaner.ACTION_DISPATCH_PING"
     const val ACTION_DISPATCH_READY = "cc.ytdttj.noticleaner.ACTION_DISPATCH_READY"
+    const val ACTION_DISPATCH_DISMISS = "cc.ytdttj.noticleaner.ACTION_DISPATCH_DISMISS"
     const val PERMISSION_SEND = "cc.ytdttj.noticleaner.PERMISSION_DISPATCH_ISLAND"
     const val CHANNEL_ID = "nc_island_dispatcher"
     const val EXTRA_INNER = "nc_island_extras"
@@ -121,12 +127,14 @@ internal object SystemUIIslandDispatcher {
                     when (intent.action) {
                         ACTION_DISPATCH_ISLAND -> handleDispatch(c, intent)
                         ACTION_DISPATCH_PING -> answerReady(c)
+                        ACTION_DISPATCH_DISMISS -> handleDismiss(c, intent)
                     }
                 }
             }
             val filter = IntentFilter().apply {
                 addAction(ACTION_DISPATCH_ISLAND)
                 addAction(ACTION_DISPATCH_PING)
+                addAction(ACTION_DISPATCH_DISMISS)
             }
             // signature 权限在框架层校验发送方；EXPORTED 是接收外部（本 App）广播的必要标志
             if (Build.VERSION.SDK_INT >= 33) {
@@ -210,5 +218,30 @@ internal object SystemUIIslandDispatcher {
             }
             .build()
         nm.notify(id, notif)
+    }
+
+    /**
+     * 「已完成」按钮（2.2.0 Dev 3）：取消**必须由本进程执行**。
+     *
+     * 代发通知的 owner 是 com.android.systemui，App 侧 `NotificationManager.cancel(id)`
+     * 只能取消本 App 名下的通知——对代发 id 是**空操作**（真机实测：App 记录了
+     * "已取消通知"，而 SystemUI 侧从未出现 notification_canceled，岛一直不消）。
+     * 因此 App 收到按钮点击后广播过来，由 SystemUI 用自己的 NotificationManager 取消。
+     *
+     * 复用 [PERMISSION_SEND]（signature）校验发送方，第三方无法伪造取消请求。
+     */
+    private fun handleDismiss(ctx: Context, intent: Intent) {
+        val id = intent.getIntExtra(EXTRA_ID, 0)
+        if (id == 0) {
+            android.util.Log.w(TAG, "island dismiss ignored: bad id")
+            return
+        }
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        val ok = runCatching { nm.cancel(id) }.isSuccess
+        android.util.Log.i(
+            TAG,
+            "island dismissed by user action (id=$id, systemui-identity=$ok, " +
+                "active=${activeContext != null})",
+        )
     }
 }
