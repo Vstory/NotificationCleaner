@@ -1,6 +1,6 @@
 {
-  "versionCode": 72,
-  "versionName": "2.1.2",
-  "notes": "【修复】\n1.点击岛上「已完成」按钮无反应\n2.岛代发未启用：现在岛通知以系统界面身份发送，认证等待归零\n\n装完请重启一次（模块 hook 重新注入）。",
-  "sha256": "aa6b54948154c42a1256a740fac71f2d4943cac8b3a9d343077ab625e589af32"
+  "versionCode": 75,
+  "versionName": "2.2.0 Dev 3",
+  "notes": "【修复】\n1.修复了点击超级岛“已完成”按钮后，岛不会消失的问题",
+  "sha256": "a83afe9a3db27dfab59f31123c93822bec57012e539bb084ae977342b98f19ff"
 }
