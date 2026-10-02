@@ -4,17 +4,35 @@ import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
+import io.github.libxposed.api.XposedModuleInterface.HotReloadedParam
+import io.github.libxposed.api.XposedModuleInterface.HotReloadingParam
+import io.github.libxposed.api.XposedModuleInterface.ModuleLoadedParam
+import io.github.libxposed.api.XposedModuleInterface.PackageLoadedParam
 import io.github.libxposed.api.XposedModuleInterface.SystemServerStartingParam
+import java.lang.reflect.Executable
 import java.lang.reflect.Method
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * LSPosed 模块入口（libxposed Modern API 102，作用域：系统 android / system_server）。
+ * LSPosed 模块入口（libxposed Modern API 102，作用域：system / SystemUI / xmsf）。
  *
- * 两组 hook：
- * 1. 保活（Plan.md §7.4）：拦截 ActiveServices 的 stop 系列，阻止系统/厂商框架停止本应用服务。
- * 2. 入队前拦截（1.2.1，借鉴 ref/Notice）：hook NotificationManagerService.enqueueNotificationInternal，
+ * 三组 hook：
+ * 1. 保活（Plan.md §7.4，system_server）：拦截 ActiveServices 的 stop 系列，阻止系统/厂商框架停止本应用服务。
+ * 2. 入队前拦截（1.2.1，system_server）：hook NotificationManagerService.enqueueNotificationInternal，
  *    通知入队前在 system_server 内完成决策——命中即吞掉，根除 NLS 进程冻结/被杀导致的过滤延迟。
  *    拦截记录经 ModuleLogSink 回流 APP（ModuleLogProvider），历史与学习闭环完整。
+ * 3. 岛链路（island 分支）：SystemUI 焦点白名单解锁 + 岛代发；xmsf 云认证解锁。
+ *
+ * 2.2.0 Dev 1：作用域热重载（module.prop `autoHotReload=true`——App 更新后框架自动换代）。
+ * 仅 SystemUI / xmsf 支持：system_server 在框架记账建立前加载模块，结构性不是热重载目标
+ * （实测 getRunningTargets() 永不含它），维持"改码即重启"。
+ * - [onHotReloading]（旧代）：完成退役契约——反注册 Dispatcher 广播接收器（本项目唯一的
+ *   系统侧模块对象引用），失败即拒绝重载；经 savedInstanceState 把目标应用 ClassLoader
+ *   带给新代（HotReloadedParam 不带 classloader，ClassLoader 是框架创建的活对象、非模块
+ *   CL 对象，不违反中性原则的立法本意）。
+ * - [onHotReloaded]（新代）：旧句柄按 id 原子 replaceHook（官方默认实现是全部 unhook，
+ *   覆写后由本类负责），再走与首次加载相同的 install 补装（[hookOnce] 按 executable 去重）；
+ *   SystemUI 侧另需急切注册岛代发接收器——Application.attach 在重载后不会再次触发。
  *
  * API 102 模型：入口类继承 XposedModule（框架实例化后 attachFramework 注入），
  * hook 为拦截器式 Hooker——【不调用 chain.proceed() 即阻断原方法】；
@@ -23,30 +41,26 @@ import java.lang.reflect.Method
  */
 class LspEntry : XposedModule() {
 
-    override fun onModuleLoaded(param: XposedModuleInterface.ModuleLoadedParam) {
+    /**
+     * 本代 hook 登记：executable → id。[hookOnce] 的去重依据；热重载时先由旧句柄回填，
+     * 使 install 补装自动跳过已被 replaceHook 覆盖的目标（避免双重 hook）。
+     */
+    private val hookedExecutables = ConcurrentHashMap<Executable, String>()
+
+    /** 目标应用 ClassLoader（install 时记录；onHotReloading 经 savedInstanceState 带给新代） */
+    @Volatile
+    private var appClassLoader: ClassLoader? = null
+
+    override fun onModuleLoaded(param: ModuleLoadedParam) {
         log(Log.INFO, TAG, "module loaded in ${param.processName} (isSystemServer=${param.isSystemServer()})")
     }
 
-    /**
-     * island 分支：SystemUI 进程加载时挂焦点通知白名单解锁（islandv2plan P3-2）。
-     * 仅当 LSPosed 作用域含 com.android.systemui 时回调。
-     */
-    override fun onPackageLoaded(param: XposedModuleInterface.PackageLoadedParam) {
+    override fun onPackageLoaded(param: PackageLoadedParam) {
         when (param.packageName) {
-            // island 分支：SystemUI 焦点通知白名单解锁
-            "com.android.systemui" -> {
-                runCatching { IslandUnlockFocusHook(this).onPackageLoaded(param) }
-                    .onFailure { log(Log.WARN, TAG, "island focus hook init failed: $it") }
-                // Dev 16：岛代发——SystemUI 进程内接收 App 广播，以 systemui 身份
-                // notify 岛通知（三道认证门槛天然全免，方案 B 信任模型）
-                runCatching { SystemUIIslandDispatcher.install(this, param.defaultClassLoader) }
-                    .onFailure { log(Log.WARN, TAG, "island dispatcher init failed: $it") }
-            }
-            // island 分支：xmsf 焦点通知认证解锁（OS3 云认证 fail-closed，必须 hook）
-            "com.xiaomi.xmsf" -> {
-                runCatching { XmsfUnlockAuthHook(this).onPackageLoaded(param) }
-                    .onFailure { log(Log.WARN, TAG, "xmsf auth hook init failed: $it") }
-            }
+            "com.android.systemui" -> runCatching { installSystemUI(param.defaultClassLoader) }
+                .onFailure { log(Log.WARN, TAG, "systemui install failed: $it") }
+            "com.xiaomi.xmsf" -> runCatching { installXmsf(param.defaultClassLoader) }
+                .onFailure { log(Log.WARN, TAG, "xmsf install failed: $it") }
         }
     }
 
@@ -55,7 +69,153 @@ class LspEntry : XposedModule() {
         hookNotificationManagerService(param.classLoader)
     }
 
-    // ---- Hook 组 1：防服务被停（保活） ----
+    // ==================== 热重载（API 102，仅 SystemUI / xmsf 生效） ====================
+
+    /**
+     * 旧代退役回调（old code）。官方默认实现返回 false = 不覆写即永久拒绝热重载，
+     * 必须显式返回 true。返回 true 前须完成退役契约：本项目无自建线程/native hook/JNI
+     * 全局引用，唯一义务是反注册 Dispatcher 广播接收器。
+     */
+    override fun onHotReloading(param: HotReloadingParam): Boolean {
+        val ok = runCatching { SystemUIIslandDispatcher.teardown() }
+            .getOrElse {
+                log(Log.WARN, TAG, "hot reload: dispatcher teardown crashed: $it")
+                false
+            }
+        if (!ok) {
+            // 接收器拆不干净 → 宁可拒绝（service 报 FAILED 且 message=null = 拒绝），
+            // 也不留"新旧接收器并存"的双投递状态
+            log(Log.WARN, TAG, "hot reload refused: dispatcher receiver still attached")
+            return false
+        }
+        // 跨代状态：仅传目标应用 ClassLoader（框架创建的活对象，非模块 CL 对象）。
+        // 框架对旧模块 CL 对象会抛 IllegalArgumentException——吞掉降级（新代走 ActivityThread 反射自取）
+        try {
+            param.setSavedInstanceState(appClassLoader)
+        } catch (e: IllegalArgumentException) {
+            log(Log.WARN, TAG, "hot reload: savedInstanceState rejected: $e")
+        }
+        log(Log.INFO, TAG, "hot reload accepted (old generation retiring)")
+        return true
+    }
+
+    /**
+     * 新代接管回调（new code）。注意两点官方规格：
+     * 1. 包生命周期回调（onPackageLoaded 等）不会自动重放——hook 全部由本方法负责恢复；
+     * 2. 默认实现是 unhook 全部旧句柄——本类覆写后改为按 id 原子 replaceHook + install 补装。
+     * 全程 runCatching：异常穿透会导致 service 报 FAILED 但新代已接管（实测半挂状态，状态错乱）。
+     */
+    override fun onHotReloaded(param: HotReloadedParam) {
+        runCatching {
+            when (param.processName) {
+                "com.android.systemui" -> reloadInProcess(param, "com.android.systemui") { cl ->
+                    installSystemUI(cl)
+                    // 急切注册岛代发接收器：Application.attach 在重载后不会再次触发，
+                    // 必须用现存 Context 立即注册（App 侧 READY 处理幂等，重发无副作用）
+                    val ctx = HookLogSink.currentApplicationOrNull()
+                        ?: HookLogSink.systemContextOrNull()
+                    if (ctx != null) {
+                        SystemUIIslandDispatcher.registerNow(ctx, this)
+                    } else {
+                        log(Log.WARN, TAG, "hot reload: no Context for dispatcher re-register")
+                    }
+                }
+                "com.xiaomi.xmsf" -> reloadInProcess(param, "com.xiaomi.xmsf") { cl ->
+                    installXmsf(cl)
+                }
+                else -> super.onHotReloaded(param)
+            }
+        }.onFailure {
+            log(Log.ERROR, TAG, "hot reload failed in ${param.processName}: $it")
+        }
+    }
+
+    /** 旧句柄按 id 原子替换（保留 executable/priority/exceptionMode/id，无无-hook 窗口） */
+    private fun reloadInProcess(
+        param: HotReloadedParam,
+        process: String,
+        install: (ClassLoader) -> Unit,
+    ) {
+        HookLogSink.init(process)
+        replaceOldHandles(param.oldHookHandles)
+        // ClassLoader 恢复：优先跨代携带，失败走 ActivityThread 反射自取
+        val cl = (param.savedInstanceState as? ClassLoader)
+            ?: HookLogSink.currentApplicationOrNull()?.classLoader
+            ?: HookLogSink.systemContextOrNull()?.classLoader
+        if (cl == null) {
+            log(Log.WARN, TAG, "hot reload: no ClassLoader available, replaced hooks only")
+            return
+        }
+        install(cl) // hookOnce 按 executable 去重，已 replaceHook 覆盖的目标自动跳过
+        log(Log.INFO, TAG, "hot reload completed in $process (pid unchanged)")
+    }
+
+    private fun replaceOldHandles(handles: List<XposedInterface.HookHandle>) {
+        for (h in handles) {
+            val id = h.id
+            val hooker = id?.let { hookerForId(it) }
+            if (hooker != null) {
+                runCatching {
+                    val newHandle = h.replaceHook(hooker)
+                    hookedExecutables[newHandle.executable] = id
+                    log(Log.INFO, TAG, "hot reload: replaced hook [$id]")
+                }.onFailure {
+                    log(Log.WARN, TAG, "hot reload: replace [$id] failed: $it")
+                }
+            } else {
+                runCatching { h.unhook() }
+                log(Log.INFO, TAG, "hot reload: unhooked handle (id=$id, no new hooker)")
+            }
+        }
+    }
+
+    /** id → 新代 Hooker（replaceHook 只换 Hooker，executable 由旧句柄保留） */
+    private fun hookerForId(id: String): XposedInterface.Hooker? = when {
+        id.startsWith("focus:") -> IslandUnlockFocusHook.hookerForId(this, id)
+        id.startsWith("dispatcher:") -> SystemUIIslandDispatcher.hookerForId(this, id)
+        id.startsWith("xmsf:") -> XmsfUnlockAuthHook.hookerForId(this, id)
+        else -> null
+    }
+
+    /**
+     * 幂等 hook 注册：同 executable 本代只挂一次（热重载补装时跳过已被 replaceHook
+     * 覆盖的目标）。所有 SystemUI/xmsf hook 必须走此入口并携带稳定 id。
+     */
+    fun hookOnce(ex: Executable, id: String, hooker: XposedInterface.Hooker): Boolean {
+        if (hookedExecutables.putIfAbsent(ex, id) != null) return false
+        val ok = runCatching {
+            hook(ex).setId(id)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept(hooker)
+        }.isSuccess
+        if (ok) {
+            log(Log.INFO, TAG, "hooked [$id] ${ex.declaringClass?.name ?: "?"}#${ex.name}")
+        } else {
+            hookedExecutables.remove(ex)
+            log(Log.WARN, TAG, "hook [$id] failed")
+        }
+        return ok
+    }
+
+    // ---- install（首次加载与热重载补装共用，幂等） ----
+
+    private fun installSystemUI(cl: ClassLoader) {
+        HookLogSink.init("com.android.systemui")
+        appClassLoader = cl
+        runCatching { IslandUnlockFocusHook(this).install(cl) }
+            .onFailure { log(Log.WARN, TAG, "island focus hook init failed: $it") }
+        runCatching { SystemUIIslandDispatcher.install(this, cl) }
+            .onFailure { log(Log.WARN, TAG, "island dispatcher init failed: $it") }
+    }
+
+    private fun installXmsf(cl: ClassLoader) {
+        HookLogSink.init("com.xiaomi.xmsf")
+        appClassLoader = cl
+        runCatching { XmsfUnlockAuthHook(this).install(cl) }
+            .onFailure { log(Log.WARN, TAG, "xmsf auth hook init failed: $it") }
+    }
+
+    // ---- Hook 组 1：防服务被停（保活，system_server——不可热重载，维持冷路径） ----
 
     private fun hookActiveServices(classLoader: ClassLoader) {
         try {
@@ -110,7 +270,7 @@ class LspEntry : XposedModule() {
         }
     }
 
-    // ---- Hook 组 2：入队前拦截（1.2.1） ----
+    // ---- Hook 组 2：入队前拦截（1.2.1，system_server——不可热重载，维持冷路径） ----
 
     private fun hookNotificationManagerService(classLoader: ClassLoader) {
         try {
