@@ -1,6 +1,6 @@
 {
-  "versionCode": 78,
-  "versionName": "2.2.0 Dev 6",
-  "notes": "【修复】\n1.修复了选中胶囊像白色奶块、盖住底栏内容的问题\n2.胶囊现在盖满整个按钮，点击时变宽并溢出底栏一点\n3.修复了底栏滑动一顿一顿的问题",
-  "sha256": "bb26faebcb0d3acb40eff26cbcc0ca8fab93402690ce5d722298c123736937d4"
+  "versionCode": 79,
+  "versionName": "2.2.0 Dev 7",
+  "notes": "【修复】\n1.修复了选中胶囊位置偏高、底部文字露在胶囊外的问题",
+  "sha256": "bef3ddd349797f63cb79d15d78e2fb8f045be46b6b2c688a5065c6062fc48bc2"
 }
