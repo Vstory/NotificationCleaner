@@ -1,6 +1,6 @@
 {
-  "versionCode": 79,
-  "versionName": "2.2.0 Dev 7",
-  "notes": "【修复】\n1.修复了选中胶囊位置偏高、底部文字露在胶囊外的问题",
-  "sha256": "bef3ddd349797f63cb79d15d78e2fb8f045be46b6b2c688a5065c6062fc48bc2"
+  "versionCode": 80,
+  "versionName": "2.2.0 Dev 8",
+  "notes": "【修复】\n1.修复了选中胶囊圆角与底栏不对齐的问题\n2.修复了切换时胶囊放大的效果不明显的问题",
+  "sha256": "3cdc1e240c5bc06fbbebdb60f73e6163a046d051f0a071d09af4634a1541d366"
 }

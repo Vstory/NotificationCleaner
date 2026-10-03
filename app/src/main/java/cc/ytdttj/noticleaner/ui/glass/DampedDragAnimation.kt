@@ -64,9 +64,20 @@ class DampedDragAnimation(
     // 按下进度：比位置稍慢，让"变宽"先于"滑移"被看到（0.82f/520f）
     private val pressProgressAnimationSpec = spring(0.82f, 520f, 0.001f)
 
-    // 缩放：刚度提高让按下瞬间就鼓起来，配合 pressProgress 慢慢回落
-    private val scaleXAnimationSpec = spring(0.55f, 420f, 0.001f)
-    private val scaleYAnimationSpec = spring(0.62f, 420f, 0.001f)
+    /**
+     * Dev 8 缩放参数重做 —— 解决"切换时胶囊放大不明显"。
+     *
+     * 上一版 `spring(0.55f, 420f)` / `spring(0.62f, 420f)` 有两个问题：
+     * 1. **阻尼比 0.55/0.62 欠阻尼太狠**：scale 会来回振荡好几下，在 350ms 的
+     *    滑移窗口里正负抵消，视觉上就是"没放大"；
+     * 2. **刚度 420 太快达峰**（约 150ms），而 press() 后紧接着就启动位置滑移，
+     *    峰值还没被"看清"就进入了回落段。
+     *
+     * 改为阻尼比 0.9（接近临界阻尼，单调上升不回弹）、刚度 260（达峰约 260ms，
+     * 与位置滑移的 350ms 时长匹配，峰值能被完整看到），配合更大的 pressedScale。
+     */
+    private val scaleXAnimationSpec = spring(0.9f, 260f, 0.001f)
+    private val scaleYAnimationSpec = spring(0.92f, 260f, 0.001f)
 
     private val valueAnimation = Animatable(initialValue, visibilityThreshold)
     private val velocityAnimation = Animatable(0f, 5f)

@@ -553,9 +553,6 @@ fun NcOutlinedButton(
 /** 底部导航项（主框架用） */
 data class GlassNavItem(val route: String, val label: String, val icon: ImageVector)
 
-/** 底栏内边距（Dev 4 改用 weight 均分，item 自身不再有横向 padding） */
-private val GlassBarItemPaddingV = 6.dp
-
 /** 底栏距屏幕底部 */
 private val GlassBarBottomMargin = 24.dp
 
@@ -573,27 +570,34 @@ private const val GlassBarWidthFraction = 0.6f
 private val GlassBarHeight = 56.dp
 
 /**
- * Dev 6：外壳的垂直内边距 = 底栏 item 的垂直内缩。
+ * Dev 8：选中指示器的静止高度 = 外壳 − 4dp = 52dp。
  *
- * **关键修复（真机图示：胶囊盖住图标但底部文字露在外面）**：
- * 外壳 Row 带 `padding(vertical = GlassBarItemPaddingV)`，所以 item 内容区是
- * `56 − 2×6 = 44dp`，且起点在 y=6dp。而指示器是独立图层，原点在外壳 Box 的
- * y=0 —— 若给它 `height = 56 − 2×VInset`（VInset=5dp 时 46dp），
- * 高度既超过内容区 44dp，位置又比内容高 6dp，于是底部约 8dp 的文字露在胶囊外。
+ * ## 几何推导（解决 Dev 7 的"圆角不对齐"+"放大不明显"两个问题）
  *
- * 正确做法：**指示器静止高度 = 外壳内容区高度**，即
- * `GlassBarHeight − 2 × GlassBarItemPaddingV`，并显式加同样的顶部偏移。
- * 此时静止态与 item 槽位逐像素重合（完整覆盖），按下 scale 1.28 后
- * 44 → 56dp，与外壳等高、视觉上"胀满"；再配合 scale 的中心放大自然溢出一点点。
+ * **同心条件**：两个同心胶囊要视觉对齐，水平内缩必须等于半径差
+ * `R1 − R2 = 外壳高/2 − 指示器高/2`。
+ *
+ * - Dev 7：指示器 44dp → 半径差 6dp，但水平内缩只有 2dp
+ *   → 两圆心横向差 4dp，间隙从中间 2dp 渐变到顶部 13.3dp
+ *   → 真机图示：右上角贴住外壳、左上角空一大块
+ * - Dev 8：指示器 52dp → 半径差 **2dp**，水平内缩也设 **2dp** → **严格同心**
+ *
+ * 为什么不用"等高 + 内缩 0"（那样也能同心）：等高时按 1.36 放大只能到 76dp，
+ * 相对 56dp 外壳要溢出 20dp/9dp 侧，反而过头；且 REAREye 原版指示器
+ * 本来就比外壳矮（56 vs 64），保持"静止矮一点"的视觉惯例。
+ *
+ * ## 放大幅度
+ * - Dev 7：44 → 1.36 = 60dp，只比外壳高 4dp（溢出 2dp/侧）→ 看不出"放大"
+ * - Dev 8：52 → 1.42 = 74dp，比外壳高 18dp（溢出 9dp/侧）→ 明显
  */
-private val GlassIndicatorVInset = GlassBarItemPaddingV
+private val GlassIndicatorHeight = 52.dp
 
 /**
- * Dev 6：指示器相对外壳的**水平**内缩。
- * 只内缩 2dp —— 目标是"胶囊覆盖整个按钮"（盖满 tab 槽），内缩多了就盖不全（Dev 4/5 的问题）。
- * REAREye 用 padding(4.dp) 居中，我们在 3/5 屏宽下改 2dp 让覆盖更满。
+ * Dev 8：指示器相对外壳的内缩（水平与垂直同值，保证圆角同心）。
+ * 2dp = 半径差 (56/2 − 52/2)。上下同时内缩 2dp，与 item 槽位居中对齐。
  */
 private val GlassIndicatorHInset = 2.dp
+private val GlassIndicatorVInset = 2.dp
 
 /**
  * Dev 6：底栏 item 的横向内边距。与指示器内缩配合，让图标文字落在胶囊正中。
@@ -677,11 +681,10 @@ fun GlassBottomBar(
             valueRange = 0f..(items.size - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
-            // Dev 7：静止高度 = 外壳内容区 = 56 − 2×6 = 44dp（与 item 槽位完全重合）。
-            // 按下 1.36 → 60dp，比外壳 56dp 高 4dp；因 scale 以胶囊中心放大，
-            // 上下各溢出 2dp —— 即"点击后超出底栏上下一点点"。
-            // （REAREye 是 1.393@64dp；我们底栏矮、屏宽只占 3/5，横向溢出要收敛。）
-            pressedScale = 1.36f,
+            // Dev 8：静止 52dp → 按下 1.42 倍 = 74dp，比外壳 56dp 高 18dp
+            // （上下各溢出 9dp）→ "点击后变宽并超出底栏上下一点点"清晰可见。
+            // （Dev 7 是 44→60dp，只溢出 2dp/侧，所以看不出放大效果）
+            pressedScale = 1.42f,
             canDrag = { offset ->
                 val anim = holder.instance ?: return@DampedDragAnimation true
                 if (tabWidthPx == 0f) return@DampedDragAnimation false
@@ -801,6 +804,8 @@ fun GlassBottomBar(
                 .fillMaxWidth()
                 .onGloballyPositioned { coords ->
                     totalWidthPx = coords.size.width.toFloat()
+                    // Dev 8：槽宽 = (外壳内容区宽) / 3；外壳 padding 与指示器内缩
+                    // 相同（各 2dp），所以内容区宽 = 总宽 − 4dp
                     val inset = with(density) { (GlassIndicatorHInset * 2).toPx() }
                     tabWidthPx = (totalWidthPx - inset) / items.size
                 }
@@ -833,7 +838,12 @@ fun GlassBottomBar(
                 )
                 .then(interactiveHighlight.modifier)
                 .height(GlassBarHeight)
-                .padding(horizontal = GlassIndicatorHInset, vertical = GlassBarItemPaddingV),
+                // Dev 8：水平内缩 = 指示器内缩（2dp），保证两者同心；
+                // item 自身另有 padding(horizontal = GlassBarItemPaddingH) 防贴边
+                .padding(
+                    horizontal = GlassIndicatorHInset,
+                    vertical = GlassIndicatorVInset,
+                ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
@@ -895,7 +905,10 @@ fun GlassBottomBar(
                     onDrawSurface = { drawRect(shellTint) },
                 )
                 .height(GlassBarHeight)
-                .padding(horizontal = GlassIndicatorHInset, vertical = GlassBarItemPaddingV)
+                .padding(
+                    horizontal = GlassIndicatorHInset,
+                    vertical = GlassIndicatorVInset,
+                )
                 .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -927,12 +940,12 @@ fun GlassBottomBar(
                         val offset = drag.value * tabWidthPx
                         translationX = if (isLtr) offset + panelOffset else -offset + panelOffset
                     }
-                    // 内缩放在 graphicsLayer **之后**：只影响布局，不参与位移计算，
-                    // 也避免 padding 区域被 drawBackdrop 采进玻璃里（多采一段空白）。
-                    // 垂直方向显式补上外壳的 top padding（6dp）—— 缺这一行会让
-                    // 整个胶囊上移 6dp，底部文字露在胶囊外（真机图示问题）。
-                    .padding(horizontal = GlassIndicatorHInset)
-                    .padding(top = GlassIndicatorVInset)
+                    // Dev 8：内缩 2dp（= 半径差，保证与外壳圆角同心）。
+                    // padding 在 graphicsLayer 之后：只影响布局，不参与位移计算。
+                    .padding(
+                        horizontal = GlassIndicatorHInset,
+                        vertical = GlassIndicatorVInset,
+                    )
                     .then(interactiveHighlight.gestureModifier)
                     .then(drag.modifier)
                     .drawBackdrop(
@@ -988,7 +1001,7 @@ fun GlassBottomBar(
                             drawRect(Color.Black.copy(alpha = 0.03f * progress))
                         },
                     )
-                    .height(GlassBarHeight - GlassIndicatorVInset * 2)
+                    .height(GlassIndicatorHeight)
                     .width(with(density) { tabWidthPx.toDp() }),
             )
         }
