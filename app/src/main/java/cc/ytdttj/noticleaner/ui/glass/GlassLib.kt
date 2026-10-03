@@ -1,9 +1,13 @@
 package cc.ytdttj.noticleaner.ui.glass
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,9 +16,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,30 +39,52 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastCoerceIn
+import androidx.compose.ui.util.fastRoundToInt
+import androidx.compose.ui.util.lerp
 import cc.ytdttj.noticleaner.ui.GlassStyle
 import cc.ytdttj.noticleaner.ui.LocalGlassMode
 import cc.ytdttj.noticleaner.ui.LocalGlassStyle
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
+import com.kyant.capsule.ContinuousCapsule
 import com.kyant.shapes.RoundedCornerStyle
 import com.kyant.shapes.RoundedRectangle
 import androidx.compose.foundation.layout.WindowInsets
@@ -63,7 +92,9 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.wrapContentWidth
-import androidx.compose.ui.unit.DpOffset
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.sign
 
 /**
  * 液态玻璃设计系统（1.4.0 Dev 7，方案 C，基于 Kyant0 Backdrop 1.0.6）：
@@ -522,8 +553,7 @@ fun NcOutlinedButton(
 /** 底部导航项（主框架用） */
 data class GlassNavItem(val route: String, val label: String, val icon: ImageVector)
 
-/** 底栏内边距 */
-private val GlassBarItemPaddingH = 10.dp
+/** 底栏内边距（Dev 4 改用 weight 均分，item 自身不再有横向 padding） */
 private val GlassBarItemPaddingV = 6.dp
 
 /** 底栏距屏幕底部 */
@@ -539,9 +569,43 @@ val GlassFloatingBarClearance = GlassBarBottomMargin + 56.dp + 16.dp
 /** 悬浮底栏宽度占屏幕宽度的比例（Dev 14：3/5） */
 private const val GlassBarWidthFraction = 0.6f
 
+/** Dev 4：底栏外壳高度（比 REAREye 的 64dp 矮，配合 3/5 屏宽的窄胶囊） */
+private val GlassBarHeight = 52.dp
+
+/** Dev 4：选中指示器内缩（不与外壳边缘齐平，留出一圈"玻璃厚度"） */
+private val GlassIndicatorHInset = 5.dp
+
 /**
- * 浮动玻璃底部导航胶囊（Dev 10 起去掉选中包裹胶囊）：
- * 选中态仅靠图标/文字变色（dynamic color 主色）表达，底栏本体实时透视页面滚动内容。
+ * Dev 4：底栏 item 的横向内边距（weight 均分后仍保留，保证图标文字不贴边）。
+ * 指示器宽度按 tabWidth 计算，item 内容与之对齐。
+ */
+private val GlassBarItemPaddingH = 4.dp
+
+/**
+ * 浮动玻璃底部导航胶囊（2.2.0 Dev 4 起移植 REAREye 三层液态玻璃架构）。
+ *
+ * ### 与 Dev 10 版本的区别（Dev 10 因效果差移除了滑移胶囊，此处按正确架构重做）
+ * Dev 10 只有一个 `if (selected) primary else onSurfaceVariant` 的颜色分支——
+ * Boolean 没有中间态，自然没有动画。此版改为 REAREye 的三层结构：
+ *
+ * ```
+ * Box
+ * ├── Row  外壳玻璃       drawBackdrop(contentBackdrop) + blur + lens + 指尖光斑
+ * ├── Row  重复内容层     alpha(0) + layerBackdrop(tabsBackdrop) + tint(primary)
+ * └── Box  选中指示器     translationX = animValue × tabWidth（连续 Float）
+ * ```
+ *
+ * 关键点：
+ * - 位置是 [DampedDragAnimation] 的**连续 Float**（0f..tabsCount-1），不是 Int 索引，
+ *   所以点击切换有中间帧，渲染出真实滑移；也支持跟手拖拽与甩动形变；
+ * - `tabsBackdrop` 录底栏自身内容，指示器同时采样 content + tabs，
+ *   于是胶囊内能看到放大的图标内容（iOS 观感）；
+ * - 重复内容层 alpha=0 但被录进 tabsBackdrop，按下时它的主色高光透出来。
+ *
+ * ### RenderNode 无环铁律（改本函数前先画引用图）
+ * - tabsBackdrop 只录「重复内容层」，重复内容层不读 tabsBackdrop → 无环
+ * - 指示器读 contentBackdrop + tabsBackdrop，但不在 tabsBackdrop 子树内 → 无环
+ * - 本函数整体由 [GlassRoot] 的 floatingBar 提供，不在 contentBackdrop 子树内 → 无环
  */
 @Composable
 fun GlassBottomBar(
@@ -550,27 +614,199 @@ fun GlassBottomBar(
     onItemClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Dev 14：外层 Box 负责居中 + 底部留白；底栏本体宽度 = 屏幕宽度 × 3/5（原先是
-    // wrapContent，三个按钮挤在一起、整体偏短），按钮间用 SpaceEvenly 均分间距。
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val dark = isSystemInDarkTheme()
+    val soft = LocalGlassStyle.current == GlassStyle.SOFT
+    val accent = MaterialTheme.colorScheme.primary
+
+    // 外壳 / 指示器的着色：玻璃档位下随模糊强度收敛，避免叠两层后过浓
+    val shellTint = glassSurfaceTint(dark, strong = true, soft = soft)
+    val indicatorShadowAlpha = if (soft) 0.08f else 0.14f
+    val indicatorHighlightAlpha = if (soft) 0.10f else 0.18f
+
+    val selectedIndex = items.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
+    var currentIndex by remember { mutableIntStateOf(selectedIndex) }
+
+    // Dev 4：录底栏自身内容（重复内容层），供选中指示器折射
+    val tabsBackdrop = rememberLayerBackdrop()
+    // 底栏由 GlassRoot 的 floatingBar 提供，正常一定有 contentBackdrop；
+    // 为 null（脱离 GlassRoot 使用）时降级为壁纸源，保证不崩
+    val contentBackdrop = LocalContentBackdrop.current ?: LocalGlassBackdrop.current
+
+    var tabWidthPx by remember { mutableFloatStateOf(0f) }
+    var totalWidthPx by remember { mutableFloatStateOf(0f) }
+
+    // 拖动时底栏整体的反向位移（挤压反馈），最大 4dp
+    val offsetAnimation = remember { Animatable(0f) }
+    val panelOffset by remember(density) {
+        derivedStateOf {
+            if (totalWidthPx == 0f) 0f else {
+                val fraction = (offsetAnimation.value / totalWidthPx).fastCoerceIn(-1f, 1f)
+                with(density) { 4f.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction)) }
+            }
+        }
+    }
+
+    class Holder { var instance: DampedDragAnimation? = null }
+    val holder = remember { Holder() }
+
+    val drag = remember(scope, items.size, density, isLtr) {
+        DampedDragAnimation(
+            animationScope = scope,
+            initialValue = selectedIndex.toFloat(),
+            valueRange = 0f..(items.size - 1).toFloat(),
+            visibilityThreshold = 0.001f,
+            initialScale = 1f,
+            // 我们的胶囊比 REAREye 小（52dp 高 / 3/5 屏宽），放大倍率必须收着给
+            pressedScale = 1.12f,
+            canDrag = { offset ->
+                val anim = holder.instance ?: return@DampedDragAnimation true
+                if (tabWidthPx == 0f) return@DampedDragAnimation false
+                val indicatorX = anim.value * tabWidthPx
+                val padding = with(density) { GlassIndicatorHInset.toPx() }
+                val globalTouchX = if (isLtr) {
+                    padding + indicatorX + offset.x
+                } else {
+                    totalWidthPx - padding - tabWidthPx - indicatorX + offset.x
+                }
+                globalTouchX in 0f..totalWidthPx
+            },
+            onDragStarted = {},
+            onDragStopped = {
+                val target = targetValue.fastRoundToInt().fastCoerceIn(0, items.size - 1)
+                currentIndex = target
+                animateToValue(target.toFloat())
+                scope.launch {
+                    offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                }
+            },
+            onDrag = { _, dragAmount ->
+                if (tabWidthPx > 0) {
+                    updateValue(
+                        (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                            .fastCoerceIn(0f, (items.size - 1).toFloat())
+                    )
+                    scope.launch { offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x) }
+                }
+            },
+        ).also { holder.instance = it }
+    }
+
+    // 外部选中变化（页面导航/深链）→ 滑过去
+    LaunchedEffect(selectedIndex) {
+        if (currentIndex != selectedIndex) {
+            currentIndex = selectedIndex
+            drag.animateToValue(selectedIndex.toFloat())
+        }
+    }
+    // 拖动/点击松手落到新索引 → 回调切换页面
+    LaunchedEffect(currentIndex) {
+        if (items.getOrNull(currentIndex)?.route != selectedRoute) {
+            onItemClick(items[currentIndex].route)
+        }
+    }
+
+    val interactiveHighlight = remember(scope, tabWidthPx, isLtr) {
+        InteractiveHighlight(
+            animationScope = scope,
+            position = { size, _ ->
+                androidx.compose.ui.geometry.Offset(
+                    if (isLtr) (drag.value + 0.5f) * tabWidthPx + panelOffset
+                    else size.width - (drag.value + 0.5f) * tabWidthPx + panelOffset,
+                    size.height / 2f,
+                )
+            },
+        )
+    }
+
     Box(
         modifier
             .fillMaxWidth()
             .padding(bottom = GlassBarBottomMargin),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterStart,
     ) {
+        if (contentBackdrop == null) {
+            // 降级路径：脱离 GlassRoot 使用时无采样源，只画纯色胶囊（动画逻辑仍完整）
+            Row(
+                Modifier
+                    .fillMaxWidth(GlassBarWidthFraction)
+                    .clip(ContinuousCapsule)
+                    .background(shellTint, ContinuousCapsule)
+                    .height(GlassBarHeight),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                items.forEach { item ->
+                    val selected = item.route == selectedRoute
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(ContinuousCapsule)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { onItemClick(item.route) },
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+                    ) {
+                        Icon(
+                            item.icon,
+                            contentDescription = item.label,
+                            tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            item.label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            return@Box
+        }
+
+        // ---------- 第 1 层：外壳玻璃胶囊 ----------
         Row(
             Modifier
-                .fillMaxWidth(GlassBarWidthFraction)
-                // 采样页面真实内容（而非壁纸）：滚到底栏下方的列表项会被实时模糊/折射进底栏。
-                // 底栏由 GlassRoot 的 floatingBar 提供，位于 content 采样子树之外 → 无自引用环。
-                .glassSurface(
-                    Capsule(),
-                    strong = true,
-                    backdropOverride = LocalContentBackdrop.current,
+                .onGloballyPositioned { coords ->
+                    totalWidthPx = coords.size.width.toFloat()
+                    val inset = with(density) { (GlassIndicatorHInset * 2).toPx() }
+                    tabWidthPx = (totalWidthPx - inset) / items.size
+                }
+                .graphicsLayer { translationX = panelOffset }
+                .drawBackdrop(
+                    backdrop = contentBackdrop,
+                    shape = { ContinuousCapsule },
+                    effects = {
+                        vibrancy()
+                        // 外壳 blur 比卡片轻：底栏下方的内容要能"透"出来，不是一坨奶雾
+                        blur((if (soft) 2f else 4f).dp.toPx())
+                        lens(12f.dp.toPx(), 12f.dp.toPx())
+                    },
+                    highlight = { Highlight.Default },
+                    shadow = {
+                        Shadow(
+                            radius = 12.dp,
+                            offset = DpOffset(0.dp, 3.dp),
+                            color = Color.Black.copy(alpha = 0.10f),
+                        )
+                    },
+                    layerBlock = {
+                        // 按下时底栏整体轻微膨胀（比 REAREye 保守：我们的胶囊更小）
+                        val progress = drag.pressProgress
+                        val s = lerp(1f, 1f + 6f.dp.toPx() / size.width, progress)
+                        scaleX = s
+                        scaleY = s
+                    },
+                    onDrawSurface = { drawRect(shellTint) },
                 )
-                .clip(Capsule())
-                .padding(horizontal = GlassBarItemPaddingH, vertical = GlassBarItemPaddingV),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .then(interactiveHighlight.modifier)
+                .height(GlassBarHeight)
+                .padding(horizontal = GlassIndicatorHInset, vertical = GlassBarItemPaddingV),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
@@ -578,22 +814,141 @@ fun GlassBottomBar(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .clip(Capsule())
-                        .clickable { onItemClick(item.route) }
-                        .padding(horizontal = 18.dp, vertical = 6.dp),
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(ContinuousCapsule)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { onItemClick(item.route) },
+                        )
+                        .padding(horizontal = GlassBarItemPaddingH),
+                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
                 ) {
                     Icon(
                         item.icon,
                         contentDescription = item.label,
-                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.graphicsLayer {
+                            // 选中项轻微放大，与指示器滑移叠加出"被拾起"的层次
+                            val s = if (selected) 1.08f else 1f
+                            scaleX = s
+                            scaleY = s
+                        },
+                        tint = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
                         item.label,
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
                     )
                 }
             }
+        }
+
+        // ---------- 第 2 层：重复内容层（按下时透出主色光） ----------
+        Row(
+            Modifier
+                .clearAndSetSemantics {}
+                .alpha(0f)
+                .layerBackdrop(tabsBackdrop)
+                .graphicsLayer { translationX = panelOffset }
+                .drawBackdrop(
+                    backdrop = contentBackdrop,
+                    shape = { ContinuousCapsule },
+                    effects = {
+                        val progress = drag.pressProgress
+                        vibrancy()
+                        blur(4f.dp.toPx())
+                        // lens 半径随按下进度增长 → 按下时边缘"张开"
+                        lens(10f.dp.toPx() * progress, 14f.dp.toPx() * progress)
+                    },
+                    highlight = { Highlight.Default.copy(alpha = drag.pressProgress) },
+                    onDrawSurface = { drawRect(shellTint) },
+                )
+                .height(GlassBarHeight)
+                .padding(horizontal = GlassIndicatorHInset, vertical = GlassBarItemPaddingV)
+                .graphicsLayer(colorFilter = ColorFilter.tint(accent)),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items.forEach { item ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = GlassBarItemPaddingH),
+                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+                ) {
+                    Icon(item.icon, contentDescription = null, tint = Color.White)
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+
+        // ---------- 第 3 层：选中指示器 ----------
+        if (tabWidthPx > 0f) {
+            Box(
+                Modifier
+                    .padding(horizontal = GlassIndicatorHInset)
+                    .graphicsLayer {
+                        val offset = drag.value * tabWidthPx
+                        translationX = if (isLtr) offset + panelOffset else -offset + panelOffset
+                    }
+                    .then(interactiveHighlight.gestureModifier)
+                    .then(drag.modifier)
+                    .drawBackdrop(
+                        backdrop = rememberCombinedBackdrop(
+                            contentBackdrop,
+                            tabsBackdrop,
+                        ),
+                        shape = { ContinuousCapsule },
+                        effects = {
+                            val progress = drag.pressProgress
+                            lens(6f.dp.toPx() * progress, 10f.dp.toPx() * progress, true)
+                        },
+                        highlight = {
+                            Highlight.Default.copy(
+                                alpha = indicatorHighlightAlpha +
+                                    drag.pressProgress * (if (soft) 0.10f else 0.20f),
+                            )
+                        },
+                        shadow = {
+                            Shadow(
+                                radius = 8.dp,
+                                offset = DpOffset(0.dp, 2.dp),
+                                color = Color.Black.copy(
+                                    alpha = indicatorShadowAlpha * (0.4f + drag.pressProgress * 0.6f),
+                                ),
+                            )
+                        },
+                        innerShadow = {
+                            InnerShadow(
+                                radius = 4.dp * (0.4f + drag.pressProgress * 0.6f),
+                                color = Color.Black.copy(alpha = 0.06f),
+                            )
+                        },
+                        layerBlock = {
+                            // 按下放大 + 速度形变（甩得越快横向拉得越长），是"液体感"的来源
+                            scaleX = drag.scaleX
+                            scaleY = drag.scaleY
+                            val v = drag.velocity / 10f
+                            scaleX /= 1f - (v * 0.4f).fastCoerceIn(-0.2f, 0.2f)
+                            scaleY *= 1f - (v * 0.15f).fastCoerceIn(-0.2f, 0.2f)
+                        },
+                        onDrawSurface = {
+                            // 静止时是一层薄薄的主色玻璃；按下时加深
+                            drawRect(accent.copy(alpha = 0.30f + drag.pressProgress * 0.18f))
+                        },
+                    )
+                    .height(GlassBarHeight - GlassIndicatorHInset * 2)
+                    .width(with(density) { tabWidthPx.toDp() }),
+            )
         }
     }
 }

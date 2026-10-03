@@ -17,8 +17,8 @@ android {
         // —— Android 12+ 动态取色全量可用，且无需为低版本维护取色降级路径
         minSdk = 33
         targetSdk = 36
-        versionCode = 75
-        versionName = "2.2.0 Dev 3"
+        versionCode = 76
+        versionName = "2.2.0 Dev 4"
         // 1.3.2（P3-7③）：只保留 arm64-v8a——剔除其余架构（armeabi-v7a/x86/x86_64）
         // 的原生库，精简 APK 体积；目标设备为真机 ARM64（模块端同样仅注入 arm64 设备）
         ndk {
@@ -96,6 +96,10 @@ dependencies {
     // pom 里声明了传递依赖，但 Gradle 按 .module 元数据解析 KMP 库时 Android 变体不带它，
     // 必须显式引入——lens 折射着色器的形状白名单只认这个库的 RoundedRectangularShape
     implementation("io.github.kyant0:shapes:1.2.0")
+    // 2.2.0 Dev 4：capsule——backdrop/shapes 的后继库，提供 ContinuousCapsule（连续曲率胶囊）。
+    // 底栏/卡片的折射边缘用普通 Capsule 会出现可见曲率折角，连续曲率才与 lens 折射配套。
+    // 锁定 2.1.1（kotlin-stdlib 2.2.21，与本项目 Kotlin 2.2.20 匹配；2.1.3 要求 stdlib 2.3.0）。
+    implementation("io.github.kyant0:capsule:2.1.1")
 
     implementation("androidx.room:room-runtime:2.8.2")
     implementation("androidx.room:room-ktx:2.8.2")
