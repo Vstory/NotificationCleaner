@@ -1,6 +1,6 @@
 {
-  "versionCode": 76,
-  "versionName": "2.2.0 Dev 4",
-  "notes": "【新增】\n1.液态玻璃底栏重做，切换页面时胶囊平滑滑移\n2.按住底栏可拖动指示器，甩动有形变回弹\n3.底栏按下时泛起主色光，指尖有体积光\n【修复】\n1.修复了从通知点击进入应用后不弹出更新提示的问题",
-  "sha256": "e55872fd1a8a62e632e810418d84ab1d22a27829ce3b2df4a24e48ae1d9ee47b"
+  "versionCode": 77,
+  "versionName": "2.2.0 Dev 5",
+  "notes": "【修复】\n1.修复了底栏宽度变成满屏的问题\n2.修复了选中指示器与图标错位的问题",
+  "sha256": "feb0aee1612da8488dee79eca48ca91392fa8a65b2d2ae6edefa2e7c40181d02"
 }
