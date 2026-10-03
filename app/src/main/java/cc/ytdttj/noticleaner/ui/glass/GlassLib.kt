@@ -573,11 +573,20 @@ private const val GlassBarWidthFraction = 0.6f
 private val GlassBarHeight = 56.dp
 
 /**
- * Dev 6：指示器相对外壳的**垂直**内缩。
- * 静止态内缩 5dp（胶囊比外壳矮一圈，露出底栏玻璃边）；按下时 scaleX/Y 涨到 1.28，
- * 高度 46→59dp 超出外壳 56dp 约 1.5dp/侧，即"点击后超出底栏上下一点点"。
+ * Dev 6：外壳的垂直内边距 = 底栏 item 的垂直内缩。
+ *
+ * **关键修复（真机图示：胶囊盖住图标但底部文字露在外面）**：
+ * 外壳 Row 带 `padding(vertical = GlassBarItemPaddingV)`，所以 item 内容区是
+ * `56 − 2×6 = 44dp`，且起点在 y=6dp。而指示器是独立图层，原点在外壳 Box 的
+ * y=0 —— 若给它 `height = 56 − 2×VInset`（VInset=5dp 时 46dp），
+ * 高度既超过内容区 44dp，位置又比内容高 6dp，于是底部约 8dp 的文字露在胶囊外。
+ *
+ * 正确做法：**指示器静止高度 = 外壳内容区高度**，即
+ * `GlassBarHeight − 2 × GlassBarItemPaddingV`，并显式加同样的顶部偏移。
+ * 此时静止态与 item 槽位逐像素重合（完整覆盖），按下 scale 1.28 后
+ * 44 → 56dp，与外壳等高、视觉上"胀满"；再配合 scale 的中心放大自然溢出一点点。
  */
-private val GlassIndicatorVInset = 5.dp
+private val GlassIndicatorVInset = GlassBarItemPaddingV
 
 /**
  * Dev 6：指示器相对外壳的**水平**内缩。
@@ -668,10 +677,11 @@ fun GlassBottomBar(
             valueRange = 0f..(items.size - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
-            // Dev 6：REAREye 是 1.393（64dp 底栏），我们底栏 56dp 且屏宽只占 3/5，
-            // 1.393 会让胶囊横向溢出过多。1.28 配合 VInset 5dp：
-            // 静止 46dp → 按下 59dp，超出 56dp 外壳约 1.5dp/侧（"上下一点点"）
-            pressedScale = 1.28f,
+            // Dev 7：静止高度 = 外壳内容区 = 56 − 2×6 = 44dp（与 item 槽位完全重合）。
+            // 按下 1.36 → 60dp，比外壳 56dp 高 4dp；因 scale 以胶囊中心放大，
+            // 上下各溢出 2dp —— 即"点击后超出底栏上下一点点"。
+            // （REAREye 是 1.393@64dp；我们底栏矮、屏宽只占 3/5，横向溢出要收敛。）
+            pressedScale = 1.36f,
             canDrag = { offset ->
                 val anim = holder.instance ?: return@DampedDragAnimation true
                 if (tabWidthPx == 0f) return@DampedDragAnimation false
@@ -913,11 +923,16 @@ fun GlassBottomBar(
         if (tabWidthPx > 0f) {
             Box(
                 Modifier
-                    .padding(horizontal = GlassIndicatorHInset)
                     .graphicsLayer {
                         val offset = drag.value * tabWidthPx
                         translationX = if (isLtr) offset + panelOffset else -offset + panelOffset
                     }
+                    // 内缩放在 graphicsLayer **之后**：只影响布局，不参与位移计算，
+                    // 也避免 padding 区域被 drawBackdrop 采进玻璃里（多采一段空白）。
+                    // 垂直方向显式补上外壳的 top padding（6dp）—— 缺这一行会让
+                    // 整个胶囊上移 6dp，底部文字露在胶囊外（真机图示问题）。
+                    .padding(horizontal = GlassIndicatorHInset)
+                    .padding(top = GlassIndicatorVInset)
                     .then(interactiveHighlight.gestureModifier)
                     .then(drag.modifier)
                     .drawBackdrop(
