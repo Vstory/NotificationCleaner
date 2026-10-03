@@ -725,13 +725,18 @@ fun GlassBottomBar(
         modifier
             .fillMaxWidth()
             .padding(bottom = GlassBarBottomMargin),
-        contentAlignment = Alignment.CenterStart,
+        contentAlignment = Alignment.Center,
     ) {
+        // 底栏坐标系容器：宽度 = 屏宽 × 3/5（Dev 14 定的比例，勿改回满屏）。
+        // 三层（外壳 / 重复内容层 / 指示器）必须同在此容器内 —— 指示器的
+        // translationX = drag.value × tabWidth 是相对本容器原点的位移，
+        // 放进满屏的父 Box 会导致指示器与外壳错位。
+        Box(Modifier.fillMaxWidth(GlassBarWidthFraction)) {
         if (contentBackdrop == null) {
             // 降级路径：脱离 GlassRoot 使用时无采样源，只画纯色胶囊（动画逻辑仍完整）
             Row(
                 Modifier
-                    .fillMaxWidth(GlassBarWidthFraction)
+                    .fillMaxWidth()
                     .clip(ContinuousCapsule)
                     .background(shellTint, ContinuousCapsule)
                     .height(GlassBarHeight),
@@ -772,6 +777,7 @@ fun GlassBottomBar(
         // ---------- 第 1 层：外壳玻璃胶囊 ----------
         Row(
             Modifier
+                .fillMaxWidth()
                 .onGloballyPositioned { coords ->
                     totalWidthPx = coords.size.width.toFloat()
                     val inset = with(density) { (GlassIndicatorHInset * 2).toPx() }
@@ -849,6 +855,7 @@ fun GlassBottomBar(
         // ---------- 第 2 层：重复内容层（按下时透出主色光） ----------
         Row(
             Modifier
+                .fillMaxWidth()
                 .clearAndSetSemantics {}
                 .alpha(0f)
                 .layerBackdrop(tabsBackdrop)
@@ -949,6 +956,7 @@ fun GlassBottomBar(
                     .height(GlassBarHeight - GlassIndicatorHInset * 2)
                     .width(with(density) { tabWidthPx.toDp() }),
             )
+        }
         }
     }
 }
