@@ -45,11 +45,28 @@ class DampedDragAnimation(
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
 
-    private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
+    /**
+     * Dev 6 弹簧参数调整。
+     *
+     * REAREye 原版位置弹簧是 `spring(1f, 1000f)`——阻尼比 1.0（临界阻尼）+ 高刚度，
+     * 滑移约 200ms 就到位。在 64dp 的大底栏上这段距离够长，能看见"变宽再收回"；
+     * 我们底栏 56dp、指示器行程约 1/3 屏宽，原参数下"按下变大"只有两三帧，
+     * 视觉上就是"没动画，直接跳过去"。
+     *
+     * 改为刚度 420、阻尼比 0.82：行程拉长到约 350ms 且尾段有极轻微回弹，
+     * 变大过程清晰可见；阻尼比从 1.0 降到 0.82 是为了避免"完全机械匀速"的死板感。
+     * 代价是拖动跟手性略降（位置动画滞后略增），但 updateValue 是每帧打断重定向，
+     * 实际拖动仍然跟手（见 updateValue 的注释）。
+     */
+    private val valueAnimationSpec = spring(0.82f, 420f, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
-    private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
-    private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
-    private val scaleYAnimationSpec = spring(0.7f, 250f, 0.001f)
+
+    // 按下进度：比位置稍慢，让"变宽"先于"滑移"被看到（0.82f/520f）
+    private val pressProgressAnimationSpec = spring(0.82f, 520f, 0.001f)
+
+    // 缩放：刚度提高让按下瞬间就鼓起来，配合 pressProgress 慢慢回落
+    private val scaleXAnimationSpec = spring(0.55f, 420f, 0.001f)
+    private val scaleYAnimationSpec = spring(0.62f, 420f, 0.001f)
 
     private val valueAnimation = Animatable(initialValue, visibilityThreshold)
     private val velocityAnimation = Animatable(0f, 5f)
@@ -59,6 +76,19 @@ class DampedDragAnimation(
 
     private val mutatorMutex = MutatorMutex()
     private val velocityTracker = VelocityTracker()
+
+    /**
+     * Dev 6：press 世代号。
+     *
+     * 点一次 tab 会走两条路径：`inspectDragGestures` 的 onDragEnd → release()，
+     * 以及 onDragStopped → animateToValue() 内部的 release()。两者都会
+     * "回缩 pressProgress / scale"，若不加守卫，先到的 release 会在滑移
+     * 还没跑完时就把胶囊缩回去 —— 视觉上就是"滑动一顿一顿"。
+     *
+     * 每次 [press] 自增；[release] 记住自己启动时的世代号，等待期间若世代已变
+     * 说明有更新的 press 接管了，本次的回缩直接放弃（由新 press 的 release 负责）。
+     */
+    private var pressGeneration = 0
 
     val value: Float get() = valueAnimation.value
     val targetValue: Float get() = valueAnimation.targetValue
@@ -96,6 +126,7 @@ class DampedDragAnimation(
 
     fun press() {
         velocityTracker.resetTracking()
+        pressGeneration++
         animationScope.launch {
             launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
             launch { scaleXAnimation.animateTo(pressedScale, scaleXAnimationSpec) }
@@ -104,6 +135,7 @@ class DampedDragAnimation(
     }
 
     fun release() {
+        val myGeneration = pressGeneration
         animationScope.launch {
             awaitFrame()
             if (value != targetValue) {
@@ -112,6 +144,9 @@ class DampedDragAnimation(
                     .filter { abs(it - valueAnimation.targetValue) < threshold }
                     .first()
             }
+            // 等待期间若发生了新的 press（点击一次会连走 press→release→press），
+            // 本次回缩作废，交给新 press 的 release，避免与滑移抢通道
+            if (pressGeneration != myGeneration) return@launch
             launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
             launch { scaleXAnimation.animateTo(initialScale, scaleXAnimationSpec) }
             launch { scaleYAnimation.animateTo(initialScale, scaleYAnimationSpec) }

@@ -569,17 +569,27 @@ val GlassFloatingBarClearance = GlassBarBottomMargin + 56.dp + 16.dp
 /** 悬浮底栏宽度占屏幕宽度的比例（Dev 14：3/5） */
 private const val GlassBarWidthFraction = 0.6f
 
-/** Dev 4：底栏外壳高度（比 REAREye 的 64dp 矮，配合 3/5 屏宽的窄胶囊） */
-private val GlassBarHeight = 52.dp
-
-/** Dev 4：选中指示器内缩（不与外壳边缘齐平，留出一圈"玻璃厚度"） */
-private val GlassIndicatorHInset = 5.dp
+/** Dev 6：底栏外壳高度（REAREye 是 64dp；我们 3/5 屏宽 + 3 个按钮，压到 56dp） */
+private val GlassBarHeight = 56.dp
 
 /**
- * Dev 4：底栏 item 的横向内边距（weight 均分后仍保留，保证图标文字不贴边）。
- * 指示器宽度按 tabWidth 计算，item 内容与之对齐。
+ * Dev 6：指示器相对外壳的**垂直**内缩。
+ * 静止态内缩 5dp（胶囊比外壳矮一圈，露出底栏玻璃边）；按下时 scaleX/Y 涨到 1.28，
+ * 高度 46→59dp 超出外壳 56dp 约 1.5dp/侧，即"点击后超出底栏上下一点点"。
  */
-private val GlassBarItemPaddingH = 4.dp
+private val GlassIndicatorVInset = 5.dp
+
+/**
+ * Dev 6：指示器相对外壳的**水平**内缩。
+ * 只内缩 2dp —— 目标是"胶囊覆盖整个按钮"（盖满 tab 槽），内缩多了就盖不全（Dev 4/5 的问题）。
+ * REAREye 用 padding(4.dp) 居中，我们在 3/5 屏宽下改 2dp 让覆盖更满。
+ */
+private val GlassIndicatorHInset = 2.dp
+
+/**
+ * Dev 6：底栏 item 的横向内边距。与指示器内缩配合，让图标文字落在胶囊正中。
+ */
+private val GlassBarItemPaddingH = 2.dp
 
 /**
  * 浮动玻璃底部导航胶囊（2.2.0 Dev 4 起移植 REAREye 三层液态玻璃架构）。
@@ -624,7 +634,6 @@ fun GlassBottomBar(
     // 外壳 / 指示器的着色：玻璃档位下随模糊强度收敛，避免叠两层后过浓
     val shellTint = glassSurfaceTint(dark, strong = true, soft = soft)
     val indicatorShadowAlpha = if (soft) 0.08f else 0.14f
-    val indicatorHighlightAlpha = if (soft) 0.10f else 0.18f
 
     val selectedIndex = items.indexOfFirst { it.route == selectedRoute }.coerceAtLeast(0)
     var currentIndex by remember { mutableIntStateOf(selectedIndex) }
@@ -659,8 +668,10 @@ fun GlassBottomBar(
             valueRange = 0f..(items.size - 1).toFloat(),
             visibilityThreshold = 0.001f,
             initialScale = 1f,
-            // 我们的胶囊比 REAREye 小（52dp 高 / 3/5 屏宽），放大倍率必须收着给
-            pressedScale = 1.12f,
+            // Dev 6：REAREye 是 1.393（64dp 底栏），我们底栏 56dp 且屏宽只占 3/5，
+            // 1.393 会让胶囊横向溢出过多。1.28 配合 VInset 5dp：
+            // 静止 46dp → 按下 59dp，超出 56dp 外壳约 1.5dp/侧（"上下一点点"）
+            pressedScale = 1.28f,
             canDrag = { offset ->
                 val anim = holder.instance ?: return@DampedDragAnimation true
                 if (tabWidthPx == 0f) return@DampedDragAnimation false
@@ -916,28 +927,31 @@ fun GlassBottomBar(
                         ),
                         shape = { ContinuousCapsule },
                         effects = {
+                            // 折射只在按下时出现（REAREye 原版：lens 半径 × pressProgress）。
+                            // 静止态不给 lens，指示器才是"透明玻璃罩住内容"而不是白色奶块。
                             val progress = drag.pressProgress
-                            lens(6f.dp.toPx() * progress, 10f.dp.toPx() * progress, true)
+                            lens(10f.dp.toPx() * progress, 14f.dp.toPx() * progress, true)
                         },
                         highlight = {
+                            // 同理：高光随按下淡入，静止态不描边
                             Highlight.Default.copy(
-                                alpha = indicatorHighlightAlpha +
-                                    drag.pressProgress * (if (soft) 0.10f else 0.20f),
+                                alpha = drag.pressProgress * (if (soft) 0.35f else 0.55f),
                             )
                         },
                         shadow = {
+                            // 投影是"按下时抬起"的暗示，静止态为 0
                             Shadow(
-                                radius = 8.dp,
-                                offset = DpOffset(0.dp, 2.dp),
+                                radius = 10.dp,
+                                offset = DpOffset(0.dp, 3.dp),
                                 color = Color.Black.copy(
-                                    alpha = indicatorShadowAlpha * (0.4f + drag.pressProgress * 0.6f),
+                                    alpha = indicatorShadowAlpha * drag.pressProgress,
                                 ),
                             )
                         },
                         innerShadow = {
                             InnerShadow(
-                                radius = 4.dp * (0.4f + drag.pressProgress * 0.6f),
-                                color = Color.Black.copy(alpha = 0.06f),
+                                radius = 6.dp * drag.pressProgress,
+                                color = Color.Black.copy(alpha = 0.10f * drag.pressProgress),
                             )
                         },
                         layerBlock = {
@@ -949,11 +963,17 @@ fun GlassBottomBar(
                             scaleY *= 1f - (v * 0.15f).fastCoerceIn(-0.2f, 0.2f)
                         },
                         onDrawSurface = {
-                            // 静止时是一层薄薄的主色玻璃；按下时加深
-                            drawRect(accent.copy(alpha = 0.30f + drag.pressProgress * 0.18f))
+                            // 关键：静止态是极淡的黑/白罩（10%），按下时**淡出**让位给折射。
+                            // 早前误用 30% 主色填充 → 指示器成白色奶块，盖住了底栏内容。
+                            val progress = drag.pressProgress
+                            drawRect(
+                                color = if (dark) Color.White.copy(0.10f) else Color.Black.copy(0.10f),
+                                alpha = 1f - progress,
+                            )
+                            drawRect(Color.Black.copy(alpha = 0.03f * progress))
                         },
                     )
-                    .height(GlassBarHeight - GlassIndicatorHInset * 2)
+                    .height(GlassBarHeight - GlassIndicatorVInset * 2)
                     .width(with(density) { tabWidthPx.toDp() }),
             )
         }
