@@ -113,6 +113,12 @@ class KeepAliveService : Service() {
 
         // 1.1.13：Doze 免疫的闹钟看门狗 + 亮屏/解锁自愈
         WatchdogReceiver.schedule(this)
+        // Dev 9：保活进程也初始化岛代发通道（App.onCreate 走 ServiceLocator；
+        // 本服务可能在 Application 逻辑跑完前就绪，两条路径都要覆盖）。
+        // 岛在后台场景最依赖这条通道——此时没有 UI 交互，失败用户完全无感。
+        runCatching {
+            cc.ytdttj.noticleaner.notify.island.IslandDispatch.init(this)
+        }
         runCatching {
             registerReceiver(
                 screenReceiver,

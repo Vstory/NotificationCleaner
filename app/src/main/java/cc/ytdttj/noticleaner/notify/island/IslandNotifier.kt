@@ -120,7 +120,8 @@ object IslandNotifier {
      * 发送走 [IslandPoster]（clearBeforePost + visibility）。
      */
     fun maybePost(context: Context, sbn: StatusBarNotification, title: String, content: String) {
-        // Dev 16：初始化代发客户端（幂等——READY 监听 + PING 询问）
+        // Dev 9：代发客户端已在 App.onCreate / KeepAliveService.onCreate 提前握手，
+        // 这里保留调用只为覆盖"未经 Application 逻辑的冷启动路径"（幂等，可重试）。
         cc.ytdttj.noticleaner.notify.island.IslandDispatch.init(context)
         // Dev 12 延迟排查：记录"我们开始处理这条原始通知"的时刻，
         // 与 sbn.postTime（微信/银行发出通知的时刻）相减 = 系统投递滞后
@@ -218,7 +219,7 @@ object IslandNotifier {
         val postedAt = System.currentTimeMillis()
         IslandTrace.log(
             "岛通知已提交系统 (id=$id, " +
-                (if (dispatched) "SystemUI 代发" else "LSPosed 放行认证") +
+                (if (dispatched) "SystemUI 代发·待回执" else "LSPosed 放行认证") +
                 ", srcPost=${cc.ytdttj.noticleaner.diagnostics.DiagTime.stamp(sbn.postTime)}" +
                 ", lag=${cc.ytdttj.noticleaner.diagnostics.DiagTime.lagText(postedAt - sbn.postTime)}" +
                 ", took=${postedAt - receivedAt}ms)",

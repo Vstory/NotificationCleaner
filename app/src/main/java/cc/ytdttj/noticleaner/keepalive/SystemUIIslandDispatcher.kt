@@ -46,6 +46,15 @@ internal object SystemUIIslandDispatcher {
     const val ACTION_DISPATCH_PING = "cc.ytdttj.noticleaner.ACTION_DISPATCH_PING"
     const val ACTION_DISPATCH_READY = "cc.ytdttj.noticleaner.ACTION_DISPATCH_READY"
     const val ACTION_DISPATCH_DISMISS = "cc.ytdttj.noticleaner.ACTION_DISPATCH_DISMISS"
+
+    /**
+     * 投递确认（Dev 9）：`handleDispatch` 成功 notify 后回发，App 侧据此把
+     * 「已提交」升级为「已投递」。
+     *
+     * 起因（2026-10-04 真机实测）：`sendBroadcast` 无回执，广播因过大被
+     * BroadcastQueue 丢弃时 App 侧毫无察觉，日志误记成功、岛却不上。
+     */
+    const val ACTION_DISPATCH_DONE = "cc.ytdttj.noticleaner.ACTION_DISPATCH_DONE"
     const val PERMISSION_SEND = "cc.ytdttj.noticleaner.PERMISSION_DISPATCH_ISLAND"
     const val CHANNEL_ID = "nc_island_dispatcher"
     const val EXTRA_INNER = "nc_island_extras"
@@ -199,6 +208,17 @@ internal object SystemUIIslandDispatcher {
         }
     }
 
+    /** Dev 9：告知 App「这条岛通知已真正 notify 出去」——闭合 fire-and-forget 的状态黑洞 */
+    private fun answerDone(ctx: Context, notificationId: Int) {
+        runCatching {
+            ctx.sendBroadcast(
+                Intent(ACTION_DISPATCH_DONE)
+                    .setPackage("cc.ytdttj.noticleaner")
+                    .putExtra(EXTRA_ID, notificationId),
+            )
+        }
+    }
+
     private fun handleDispatch(ctx: Context, intent: Intent) {
         val inner = intent.getBundleExtra(EXTRA_INNER) ?: return
         if (!inner.containsKey("miui.focus.param")) return // 非岛通知防御
@@ -217,7 +237,14 @@ internal object SystemUIIslandDispatcher {
                     ?.let { b.setContentIntent(it) }
             }
             .build()
-        nm.notify(id, notif)
+        // Dev 9：只有真正 notify 成功才回执——让 App 侧的「已投递」名副其实
+        val ok = runCatching { nm.notify(id, notif) }.isSuccess
+        android.util.Log.i(
+            TAG,
+            "island dispatched via systemui-identity (id=$id, notify=$ok, " +
+                "extras=${inner.size()}B)",
+        )
+        if (ok) answerDone(ctx, id)
     }
 
     /**
