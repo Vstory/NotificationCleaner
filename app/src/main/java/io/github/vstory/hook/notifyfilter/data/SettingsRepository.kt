@@ -5,7 +5,6 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -86,26 +85,6 @@ class SettingsRepository(private val context: Context) {
     /** 清理截止时间戳：now - 保留天数（purgeOlderThan 的 cutoff） */
     suspend fun historyRetentionCutoff(now: Long): Long =
         now - historyRetentionDays.first().toLong() * 86_400_000L
-
-    // ---- 界面风格（1.4.0 Dev 4）：MATERIAL=Material 3 / GLASS=液态玻璃（Kyant0 Backdrop） ----
-    private val keyUiTheme = stringPreferencesKey("ui_theme")
-
-    /** 取值为 [io.github.vstory.hook.notifyfilter.ui.UiTheme] 的 name */
-    val uiTheme: Flow<String> = context.dataStore.data.map { it[keyUiTheme] ?: "MATERIAL" }
-
-    suspend fun setUiTheme(value: String) {
-        context.dataStore.edit { it[keyUiTheme] = value }
-    }
-
-    // ---- 玻璃清晰度（1.4.0 Dev 5）：FROSTED=磨砂（可读性） / SOFT=柔光（近乎全透明） ----
-    private val keyGlassStyle = stringPreferencesKey("glass_style")
-
-    /** 取值为 [io.github.vstory.hook.notifyfilter.ui.GlassStyle] 的 name；仅玻璃主题下生效 */
-    val glassStyle: Flow<String> = context.dataStore.data.map { it[keyGlassStyle] ?: "FROSTED" }
-
-    suspend fun setGlassStyle(value: String) {
-        context.dataStore.edit { it[keyGlassStyle] = value }
-    }
 
     suspend fun setThreshold(value: Float) {
         val clamped = value.coerceIn(0.5f, 1.0f)

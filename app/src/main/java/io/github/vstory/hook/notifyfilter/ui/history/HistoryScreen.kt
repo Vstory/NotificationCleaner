@@ -115,21 +115,10 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
         }
     }
 
-    // Dev 14：玻璃模式下悬浮底栏位于 Scaffold 之外，Snackbar 默认贴底会被它盖住
-    // （升级后"正在拟合 N 条标注…"看不见）→ 底部让位一个底栏高度
-    val snackbarBottomPadding =
-        if (io.github.vstory.hook.notifyfilter.ui.LocalGlassMode.current) {
-            io.github.vstory.hook.notifyfilter.ui.glass.GlassFloatingBarClearance
-        } else {
-            0.dp
-        }
-
     // 1.4.0 Dev 13：外层 MainScaffold 已应用状态栏 inset，此处必须清零，
     // 否则顶部 inset 双叠加 → 筛选按钮上方一大片空白
     Scaffold(
-        snackbarHost = {
-            Box(Modifier.padding(bottom = snackbarBottomPadding)) { SnackbarHost(snackbar) }
-        },
+        snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {

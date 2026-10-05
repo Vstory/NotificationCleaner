@@ -31,8 +31,8 @@ android {
 
     defaultConfig {
         applicationId = "io.github.vstory.hook.notifyfilter"
-        // dev 分支 UI 改造（Material 3 Expressive / Material You）：minSdk 提升至 33
-        // —— Android 12+ 动态取色全量可用，且无需为低版本维护取色降级路径
+        // 33 是 dev 分支为 Material You 动态取色（API 31+）抬上来的；改投 miuix 后该理由已消失，
+        // 但降级需单独验证 miuix 各模块的运行时 API 依赖，未做，故维持
         minSdk = 33
         targetSdk = 36
         versionCode = 72
@@ -122,10 +122,9 @@ dependencies {
 
     // ⚠️ BOM 必须 ≥ 2026.09.00：miuix 要求 CMP foundation 1.12（转发到 androidx compose 1.12.x），
     //    BOM 的版本约束优先级高于传递依赖 ⇒ 钉在 2026.06.01（compose 1.11.4）会把 miuix 的
-    //    1.12 依赖压回 1.11 而编译失败。该 BOM 下 material3 仍是 1.4.0（未变），故升级不影响既有屏。
+    //    1.12 依赖压回 1.11 而编译失败。
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.navigation:navigation-compose:2.9.5")
@@ -137,16 +136,6 @@ dependencies {
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4")
-
-    // dev 分支 UI 改造（1.4.0 Dev 4，方案 C）：Kyant0 Backdrop——液态玻璃效果
-    // （backdrop 采样 + AGSL 折射着色器 + RenderEffect 模糊，minSdk 33 全量可用）。
-    // 注意：2.x 依赖 CMP 1.12（androidx compose 1.12 要求 AGP 9.1+），1.0.6 基于
-    // androidx compose 1.10 与当前 AGP 8.13 / compose 1.11 兼容
-    implementation("io.github.kyant0:backdrop:1.0.6")
-    // backdrop 的平滑圆角形状库（Capsule/RoundedRectangle + Continuous 连续曲率）：
-    // pom 里声明了传递依赖，但 Gradle 按 .module 元数据解析 KMP 库时 Android 变体不带它，
-    // 必须显式引入——lens 折射着色器的形状白名单只认这个库的 RoundedRectangularShape
-    implementation("io.github.kyant0:shapes:1.2.0")
 
     implementation("androidx.room:room-runtime:2.8.2")
     implementation("androidx.room:room-ktx:2.8.2")

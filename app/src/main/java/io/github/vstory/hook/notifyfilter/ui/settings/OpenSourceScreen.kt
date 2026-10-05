@@ -31,8 +31,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 参考开源项目（2.0.1 Dev 17）：
- * 本项目的借鉴、参考与依赖来源——液态玻璃（Backdrop/Shapes）、UI 风格（miuix）、
- * 模块 API（libxposed）与免 Root 通道（Shizuku）。
+ * 本项目的借鉴、参考与依赖来源——UI 风格（miuix）、模块 API（libxposed）与免 Root 通道（Shizuku）。
  */
 private data class OpenSourceProject(
     val name: String,
@@ -45,14 +44,6 @@ private val PROJECTS = listOf(
     OpenSourceProject(
         "miuix", "compose-miuix-ui", "https://github.com/compose-miuix-ui/miuix",
         "Compose UI 组件风格参考",
-    ),
-    OpenSourceProject(
-        "Backdrop", "Kyant0", "https://github.com/Kyant0/Backdrop",
-        "液态玻璃背景效果库（界面玻璃质感的核心依赖）",
-    ),
-    OpenSourceProject(
-        "Shapes", "Kyant0", "https://github.com/Kyant0/Shapes",
-        "连续曲率圆角形状组件",
     ),
     OpenSourceProject(
         "libxposed API", "libxposed", "https://github.com/libxposed/api",

@@ -51,7 +51,6 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.Switch
-import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -67,20 +66,6 @@ class SettingsViewModel(
     val excludeFromRecents = settings.excludeFromRecents.stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
-
-    // ---- 界面风格（1.4.0 Dev 4）：Material 3 / 液态玻璃 ----
-    val uiTheme = settings.uiTheme.stateIn(viewModelScope, SharingStarted.Eagerly, io.github.vstory.hook.notifyfilter.ui.UiTheme.MATERIAL.name)
-
-    fun setUiTheme(mode: io.github.vstory.hook.notifyfilter.ui.UiTheme) {
-        viewModelScope.launch { settings.setUiTheme(mode.name) }
-    }
-
-    // ---- 玻璃清晰度（1.4.0 Dev 5）：磨砂 / 柔光 ----
-    val glassStyle = settings.glassStyle.stateIn(viewModelScope, SharingStarted.Eagerly, io.github.vstory.hook.notifyfilter.ui.GlassStyle.FROSTED.name)
-
-    fun setGlassStyle(style: io.github.vstory.hook.notifyfilter.ui.GlassStyle) {
-        viewModelScope.launch { settings.setGlassStyle(style.name) }
-    }
 
     private val _keepAlive = MutableStateFlow(KeepAliveStatus())
     val keepAlive: StateFlow<KeepAliveStatus> = _keepAlive
@@ -277,8 +262,6 @@ fun SettingsScreen(
     val execResult by vm.execResult.collectAsState()
     val execBusy by vm.execBusy.collectAsState()
     var thresholdInput by remember(threshold) { mutableStateOf("%.2f".format(threshold)) }
-    val uiThemeMode by vm.uiTheme.collectAsState()
-    val glassStyleMode by vm.glassStyle.collectAsState()
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
@@ -299,53 +282,8 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            // Dev 15：玻璃模式下悬浮底栏位于 Scaffold 之外，会盖住滚到最底部的功能块
-            // → 内容底部让位一个底栏高度（非玻璃模式有 bottomBar，无需让位）
-            .padding(bottom = if (io.github.vstory.hook.notifyfilter.ui.LocalGlassMode.current) {
-                io.github.vstory.hook.notifyfilter.ui.glass.GlassFloatingBarClearance
-            } else {
-                0.dp
-            })
             .padding(16.dp),
     ) {
-        // ---- 界面风格切换（1.4.0 Dev 4）：液态玻璃 / Material 3 ----
-        Card(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("界面风格", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                    Text("液态玻璃或 Material 3；玻璃模式含壁纸折射、磨砂卡片与胶囊底栏", style = MiuixTheme.textStyles.footnote1)
-                }
-                Switch(
-                    checked = uiThemeMode == io.github.vstory.hook.notifyfilter.ui.UiTheme.GLASS.name,
-                    onCheckedChange = {
-                        vm.setUiTheme(
-                            if (it) io.github.vstory.hook.notifyfilter.ui.UiTheme.GLASS else io.github.vstory.hook.notifyfilter.ui.UiTheme.MATERIAL,
-                        )
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 玻璃清晰度（1.4.0 Dev 5）：仅玻璃主题下显示 ----
-        if (uiThemeMode == io.github.vstory.hook.notifyfilter.ui.UiTheme.GLASS.name) {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("玻璃清晰度", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text("柔光玻璃近乎全透明；磨砂玻璃提供一定可读性", style = MiuixTheme.textStyles.footnote1)
-                    Spacer(Modifier.height(8.dp))
-                    TabRow(
-                        tabs = io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries.map { it.label },
-                        selectedTabIndex = io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries
-                            .indexOfFirst { it.name == glassStyleMode }.coerceAtLeast(0),
-                        onTabSelected = { vm.setGlassStyle(io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries[it]) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
-
         // ---- 拦截模式 ----
         Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

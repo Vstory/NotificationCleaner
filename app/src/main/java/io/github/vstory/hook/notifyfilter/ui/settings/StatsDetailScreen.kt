@@ -2,7 +2,6 @@ package io.github.vstory.hook.notifyfilter.ui.settings
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -244,19 +243,10 @@ fun StatsDetailScreen(
         }
     }
 
-    // Dev 14：玻璃模式下悬浮底栏在 Scaffold 之外，Snackbar 需上移让位，否则被盖住
-    val snackbarBottomPadding =
-        if (io.github.vstory.hook.notifyfilter.ui.LocalGlassMode.current) {
-            io.github.vstory.hook.notifyfilter.ui.glass.GlassFloatingBarClearance
-        } else {
-            0.dp
-        }
     val selected by vm.selected.collectAsState()
 
     Scaffold(
-        snackbarHost = {
-            Box(Modifier.padding(bottom = snackbarBottomPadding)) { SnackbarHost(snackbar) }
-        },
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             SmallTopAppBar(
                 title = if (mode is StatsMode.Filtered) "已过滤的通知" else "已学习的通知",
