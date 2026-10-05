@@ -1,6 +1,7 @@
 package io.github.vstory.hook.notifyfilter.ui.settings
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,17 +16,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -33,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +51,19 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // 1.3.2（P3-6）：SimpleDateFormat（非线程安全）→ java.time DateTimeFormatter（不可变）
 private val detailTimeFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -174,7 +178,6 @@ class StatsDetailViewModel(
 }
 
 /** 设置页统计明细（Plan.md §6.3）：已过滤/已学习通知全文列表 */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsDetailScreen(
     modeKey: String,
@@ -209,29 +212,36 @@ fun StatsDetailScreen(
     val unlearnedCount = items.size - learnedCount
 
     if (confirmAll) {
-        io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+        OverlayDialog(
+            show = true,
+            title = "重新学习 $learnedCount 条已学习通知？",
             onDismissRequest = { confirmAll = false },
-            title = { Text("重新学习 $learnedCount 条已学习通知？") },
-            text = {
-                Text(
-                    "⚠️ 只会重新学习已有标注的条目，未学习的 $unlearnedCount 条将被跳过\n\n" +
-                        "· 已学习为广告 $adCount 条 → 再学一次广告（广告权重加强）\n" +
-                        "· 已学习为正常 $normalCount 条 → 再学一次正常（广告权重下调）\n\n" +
-                        "⚠️ 未学习过的通知不会被自动标为广告；\n若想把某条误拦通知改成正常，请逐条点开详情后手动选择。\n\n" +
-                        "学习后模型会立即重新拟合。",
-                    style = MaterialTheme.typography.bodySmall,
+        ) {
+            Text(
+                "⚠️ 只会重新学习已有标注的条目，未学习的 $unlearnedCount 条将被跳过\n\n" +
+                    "· 已学习为广告 $adCount 条 → 再学一次广告（广告权重加强）\n" +
+                    "· 已学习为正常 $normalCount 条 → 再学一次正常（广告权重下调）\n\n" +
+                    "⚠️ 未学习过的通知不会被自动标为广告；\n若想把某条误拦通知改成正常，请逐条点开详情后手动选择。\n\n" +
+                    "学习后模型会立即重新拟合。",
+                style = MiuixTheme.textStyles.footnote1,
+            )
+            Spacer(Modifier.height(20.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = { confirmAll = false },
+                    modifier = Modifier.weight(1f),
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmAll = false
-                    vm.relearnAll(items)
-                }, enabled = learnedCount > 0) { Text("开始学习") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmAll = false }) { Text("取消") }
-            },
-        )
+                Button(
+                    onClick = {
+                        confirmAll = false
+                        vm.relearnAll(items)
+                    },
+                    enabled = learnedCount > 0,
+                    modifier = Modifier.weight(1f),
+                ) { Text("开始学习", style = MiuixTheme.textStyles.button) }
+            }
+        }
     }
 
     // Dev 14：玻璃模式下悬浮底栏在 Scaffold 之外，Snackbar 需上移让位，否则被盖住
@@ -243,22 +253,24 @@ fun StatsDetailScreen(
         }
     val selected by vm.selected.collectAsState()
 
-    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
+    Scaffold(
         snackbarHost = {
             Box(Modifier.padding(bottom = snackbarBottomPadding)) { SnackbarHost(snackbar) }
         },
         topBar = {
-            io.github.vstory.hook.notifyfilter.ui.glass.NfTopAppBar(
-                title = { Text(if (mode is StatsMode.Filtered) "已过滤的通知" else "已学习的通知") },
+            SmallTopAppBar(
+                title = if (mode is StatsMode.Filtered) "已过滤的通知" else "已学习的通知",
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                 },
                 actions = {
                     // 2.0.1 Dev 1：只在列表里确有已学习条目时才显示（未学习项不再代填方向）
                     if (learnedCount > 0) {
-                        TextButton(onClick = { confirmAll = true }, enabled = !busy) {
-                            Text(if (busy) "学习中…" else "全部学习")
-                        }
+                        TextButton(
+                            text = if (busy) "学习中…" else "全部学习",
+                            onClick = { confirmAll = true },
+                            enabled = !busy,
+                        )
                     }
                 },
             )
@@ -267,23 +279,23 @@ fun StatsDetailScreen(
         if (items.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(padding),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("暂无记录", style = MaterialTheme.typography.titleMedium)
+                Text("暂无记录", style = MiuixTheme.textStyles.headline2)
             }
         } else {
             LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(12.dp)) {
                 items(items, key = { it.id }) { n ->
                     // Dev 14：条目可点击 → 打开与历史页同款的详情弹层（可重新学习/取消学习）
-                    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(
+                    Card(
                         Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { vm.select(n) },
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Row {
-                                Text(n.appName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(n.appName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
-                                Text(formatDetailTime(n.postTime), style = MaterialTheme.typography.labelSmall)
+                                Text(formatDetailTime(n.postTime), style = MiuixTheme.textStyles.footnote2)
                                 Spacer(Modifier.weight(1f))
                                 val reason = when (n.decision) {
                                     "FILTERED_BY_AI", "FILTERED_BY_AI_MODULE" -> "AI ${(n.adProbability * 100).toInt()}%"
@@ -291,13 +303,13 @@ fun StatsDetailScreen(
                                     DECISION_MANUAL_MARKED_AD -> "手动学习"
                                     else -> ""
                                 }
-                                Text(reason, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                                Text(reason, style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.error)
                             }
                             if (n.title.isNotEmpty()) {
-                                Text(n.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(n.title, style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Spacer(Modifier.height(2.dp))
-                            Text(n.content, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                            Text(n.content, style = MiuixTheme.textStyles.footnote1, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         }
                     }
                 }
@@ -308,7 +320,7 @@ fun StatsDetailScreen(
     // Dev 14：点击条目 → 与历史页一致的详情弹层（重新学习 / 取消学习 / 跳转通道）
     selected?.let { n ->
         val context = LocalContext.current
-        io.github.vstory.hook.notifyfilter.ui.glass.NfModalBottomSheet(onDismissRequest = { vm.select(null) }) {
+        OverlayBottomSheet(show = true, onDismissRequest = { vm.select(null) }) {
             NotificationDetail(
                 n = n,
                 onJumpChannel = {
