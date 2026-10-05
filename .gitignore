@@ -42,6 +42,8 @@ Thumbs.db
 
 # 开发计划
 *.md
+# 例外：Release 正文由工作流原样发布（属流程资产，不是开发笔记）
+!.github/release-notes/*.md
 
 .trae/
 .workbuddy/

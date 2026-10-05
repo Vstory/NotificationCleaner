@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -741,15 +739,13 @@ fun SettingsScreen(
         val updateVm: cc.ytdttj.noticleaner.update.UpdateViewModel =
             viewModel(key = "update", factory = viewModelFactory { initializer { cc.ytdttj.noticleaner.update.UpdateViewModel() } })
         val updateState by updateVm.state.collectAsState()
-        val updateChannel by updateVm.channel.collectAsState()
-        var channelMenuOpen by remember { mutableStateOf(false) }
         cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("检查更新", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(
-                            "当前版本 v${cc.ytdttj.noticleaner.BuildConfig.VERSION_NAME}（${updateChannel.label}通道：${if (updateChannel == cc.ytdttj.noticleaner.update.UpdateChannel.STABLE) "Gitee" else "GitHub"}）",
+                            "当前版本 v${cc.ytdttj.noticleaner.BuildConfig.VERSION_NAME}",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -757,38 +753,6 @@ fun SettingsScreen(
                         enabled = updateState !is cc.ytdttj.noticleaner.update.UpdateState.Checking,
                         onClick = { updateVm.checkUpdate() },
                     ) { Text("检查") }
-                }
-                Spacer(Modifier.height(8.dp))
-                // 1.3.2 更新分流：稳定版 → Gitee（x.x.x）；Dev 版 → GitHub（x.x.x Dev N），默认稳定版
-                androidx.compose.foundation.layout.Box {
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(
-                        onClick = { channelMenuOpen = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            "更新通道：${updateChannel.label}",
-                            modifier = Modifier.weight(1f),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Start,
-                        )
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.ArrowDropDown,
-                            contentDescription = "选择更新通道",
-                        )
-                    }
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = channelMenuOpen,
-                        onDismissRequest = { channelMenuOpen = false },
-                    ) {
-                        cc.ytdttj.noticleaner.update.UpdateChannel.entries.forEach { c ->
-                            DropdownMenuItem(
-                                text = { Text(c.label + if (c == updateChannel) "（当前）" else "") },
-                                onClick = {
-                                    updateVm.setChannel(c)
-                                    channelMenuOpen = false
-                                },
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -1143,7 +1107,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
         when (val s = updateState) {
             is cc.ytdttj.noticleaner.update.UpdateState.Checking -> UpdateStatusDialog(
-                title = "正在检查更新…", text = "请求${updateChannel.label}更新源（${if (updateChannel == cc.ytdttj.noticleaner.update.UpdateChannel.STABLE) "Gitee" else "GitHub"}）",
+                title = "正在检查更新…", text = "正在请求更新源",
                 confirm = null, onDismiss = { updateVm.reset() },
             )
             is cc.ytdttj.noticleaner.update.UpdateState.UpToDate -> UpdateStatusDialog(

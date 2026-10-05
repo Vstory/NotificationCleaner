@@ -10,7 +10,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -20,11 +19,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 应用内更新（UpgradePlan.md）：
- * 1.3.2 更新分流：稳定版 → Gitee（x.x.x 正式 Release）；Dev 版 → GitHub（x.x.x Dev N）。
- * 检查按所选通道单源获取（不再双源排序）；下载优先同一镜像，稳定版另一镜像作备选
- * （Dev 版仅 GitHub 有资产，不做备选）。
- * 注：latest.json 的 url 字段仅保留给旧版本客户端兜底，1.1.10+ 的候选地址由本端按镜像自行构造。
+ * 应用内更新（UpgradePlan.md）：单通道，检查与下载都只走本仓库（见 [UpdateChecker]）。
+ * 下载地址由本端按版本号构造，不读 latest.json 的 url 字段（该字段仅留给旧客户端兜底）。
  * latest.json: {versionCode, versionName, notes, url?, sha256?}
  */
 @Serializable
@@ -50,40 +46,14 @@ class UpdateViewModel : ViewModel() {
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state
 
-    /** 更新通道（1.3.2）：默认稳定版；持久化于 DataStore（SettingsRepository） */
-    private val _channel = MutableStateFlow(UpdateChannel.STABLE)
-    val channel: StateFlow<UpdateChannel> = _channel
-
     private var downloadJob: Job? = null
-
-    /** 上次检查成功的来源（gitee/github），下载优先使用同一镜像（1.1.10） */
-    @Volatile
-    private var lastCheckSource: String = "gitee"
-
-    init {
-        viewModelScope.launch {
-            val saved = runCatching {
-                cc.ytdttj.noticleaner.ServiceLocator.settings.updateChannel.first()
-            }.getOrNull()
-            _channel.value = runCatching { UpdateChannel.valueOf(saved ?: "STABLE") }
-                .getOrDefault(UpdateChannel.STABLE)
-        }
-    }
-
-    /** 切换更新通道：立即生效并持久化 */
-    fun setChannel(c: UpdateChannel) {
-        _channel.value = c
-        viewModelScope.launch {
-            runCatching { cc.ytdttj.noticleaner.ServiceLocator.settings.setUpdateChannel(c.name) }
-        }
-    }
 
     fun reset() {
         _state.value = UpdateState.Idle
     }
 
-    /** 检查更新（按所选通道单源获取；检查逻辑在 [UpdateChecker]，与后台 Worker 共用）。
-     *  island 分支：包名非正式版时短路——latest.json 通道只指正式版（island 版与正式版并存，装正式版 APK 不会升级而是多装一个） */
+    /** 检查更新（逻辑在 [UpdateChecker]，与后台 Worker 共用）。
+     *  island 分支：包名非正式版时短路——更新源只指正式版（island 版与正式版并存，装正式版 APK 不会升级而是多装一个） */
     fun checkUpdate() {
         if (BuildConfig.APPLICATION_ID != "cc.ytdttj.noticleaner") {
             _state.value = UpdateState.Error("Island 版不参与应用内更新，请手动更新（跟随 main 分支版本号）")
@@ -92,68 +62,53 @@ class UpdateViewModel : ViewModel() {
         if (_state.value is UpdateState.Checking) return
         downloadJob?.cancel()
         _state.value = UpdateState.Checking
-        val ch = _channel.value
         viewModelScope.launch {
-            val result = UpdateChecker.checkLatest(ch)
+            val release = UpdateChecker.checkLatest()
             _state.value = when {
-                result == null -> UpdateState.Error("检查失败：无法访问${if (ch == UpdateChannel.STABLE) " Gitee" else " GitHub"} 更新源")
-                result.release.versionCode > BuildConfig.VERSION_CODE -> {
-                    lastCheckSource = result.source
+                release == null -> UpdateState.Error("检查失败：无法访问更新源")
+                release.versionCode > BuildConfig.VERSION_CODE -> {
                     // Dev 9：更新检查结果落环形日志（UPDATE 模块，覆盖 24 小时）
                     cc.ytdttj.noticleaner.diagnostics.RingLog.log(
                         cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
-                        "发现新版本 ${result.release.versionName} (vc${result.release.versionCode}) " +
-                            "来源=${result.source} 当前=vc${BuildConfig.VERSION_CODE}",
+                        "发现新版本 ${release.versionName} (vc${release.versionCode}) " +
+                            "当前=vc${BuildConfig.VERSION_CODE}",
                     )
-                    UpdateState.Available(result.release)
+                    UpdateState.Available(release)
                 }
                 else -> UpdateState.UpToDate
             }
         }
     }
 
-    /** 下载 APK：稳定版优先检查成功的镜像、另一镜像备选；Dev 版仅 GitHub（模板化 URL） */
+    /** 下载 APK：地址按版本号拼，与 build-release.yml 的 tag / 资产名一一对应 */
     fun startDownload(release: LatestRelease) {
         downloadJob?.cancel()
         val appCtx = cc.ytdttj.noticleaner.ServiceLocator.appContext
-        // 版本号去空格作为 tag/文件名（Dev 版 "1.3.2 Dev 1" → "1.3.2Dev1"，git tag 与附件名不允许空格）
-        val tag = "v" + release.versionName.replace(" ", "")
-        val apkName = "NotiCleaner-${release.versionName.replace(" ", "")}.apk"
-        val giteeUrl = BuildConfig.UPDATE_APK_GITEE + "/" + tag + "/" + apkName
-        val githubUrl = BuildConfig.UPDATE_APK_GITHUB + "/" + tag + "/" + apkName
-        val candidates = when (_channel.value) {
-            UpdateChannel.DEV -> listOf("GitHub" to githubUrl)
-            UpdateChannel.STABLE ->
-                if (lastCheckSource == "gitee") {
-                    listOf("Gitee" to giteeUrl, "GitHub" to githubUrl)
-                } else {
-                    listOf("GitHub" to githubUrl, "Gitee" to giteeUrl)
-                }
-        }
+        // 版本名去空格（上游 Dev 版形如 "1.3.2 Dev 1" → "1.3.2Dev1"）：tag 与资产名都不允许空格
+        val ver = release.versionName.replace(" ", "")
+        val tag = "v$ver.${release.versionCode}"
+        val apkName = "NotiCleaner.$ver.${release.versionCode}.release.apk"
+        val url = "${BuildConfig.UPDATE_APK_BASE}/$tag/$apkName"
+        val dest = File(appCtx.getExternalFilesDir(null), "update/$apkName")
         _state.value = UpdateState.Downloading(release, 0)
         downloadJob = viewModelScope.launch {
-            val errors = mutableListOf<String>()
-            for ((name, url) in candidates) {
-                val dest = File(appCtx.getExternalFilesDir(null), "update/$apkName")
-                val err = withContext(Dispatchers.IO) { directDownload(url, dest, release) }
-                if (err == null) {
-                    cc.ytdttj.noticleaner.diagnostics.RingLog.log(
-                        cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
-                        "APK 下载完成 $name → ${release.versionName}",
-                    )
-                    _state.value = UpdateState.ReadyToInstall(release, dest)
-                    return@launch
-                }
+            val err = withContext(Dispatchers.IO) { directDownload(url, dest, release) }
+            if (err == null) {
                 cc.ytdttj.noticleaner.diagnostics.RingLog.log(
                     cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
-                    "✗ APK 下载失败 [$name] $err",
+                    "APK 下载完成 → ${release.versionName}",
                 )
-                android.util.Log.w("UpdateVM", "download failed [$name] $url: $err")
-                errors.add("$name $err")
+                _state.value = UpdateState.ReadyToInstall(release, dest)
+            } else {
+                cc.ytdttj.noticleaner.diagnostics.RingLog.log(
+                    cc.ytdttj.noticleaner.diagnostics.LogModules.UPDATE,
+                    "✗ APK 下载失败 $err",
+                )
+                android.util.Log.w("UpdateVM", "download failed $url: $err")
                 dest.delete()
                 File(dest.parentFile, dest.name + ".tmp").delete()
+                _state.value = UpdateState.Error("下载失败：$err")
             }
-            _state.value = UpdateState.Error("下载失败：所有更新源均不可用（${errors.joinToString("；")}）")
         }
     }
 

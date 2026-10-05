@@ -19,7 +19,6 @@ import androidx.work.WorkerParameters
 import cc.ytdttj.noticleaner.BuildConfig
 import cc.ytdttj.noticleaner.R
 import cc.ytdttj.noticleaner.ui.MainActivity
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /**
@@ -30,13 +29,7 @@ import java.util.concurrent.TimeUnit
 class UpdateWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
-        // 1.3.2：后台检查同样按用户所选通道单源获取（稳定版=Gitee / Dev 版=GitHub）
-        val channel = runCatching {
-            UpdateChannel.valueOf(
-                cc.ytdttj.noticleaner.ServiceLocator.settings.updateChannel.let { it.first() },
-            )
-        }.getOrNull() ?: UpdateChannel.STABLE
-        val release = UpdateChecker.checkLatest(channel)?.release ?: return Result.retry()
+        val release = UpdateChecker.checkLatest() ?: return Result.retry()
         if (release.versionCode <= BuildConfig.VERSION_CODE) return Result.success()
 
         val ctx = applicationContext

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,10 +8,22 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// 签名从 local.properties 读（该文件被 .gitignore 忽略）：CI 解出 secrets 里的固定钥后写入这四个键，
+// 本机没有该文件时不建签名配置 —— 那时 release 产物是 app-release-unsigned.apk（装不上，CI 据此断言）。
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+val signStoreFile = localProps.getProperty("storeFile")
+val hasSigning = !signStoreFile.isNullOrBlank()
+
 android {
     namespace = "cc.ytdttj.noticleaner"
     // 1.2.1：libxposed service 102 要求 compileSdk ≥ 37（仅编译期，targetSdk 保持 36）
     compileSdk = 37
+    compileSdkMinor = 0
+    // 与 CI 装的 build-tools 对齐：不钉住时 AGP 会挑自己默认的版本，runner 上不一定有
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "cc.ytdttj.noticleaner"
@@ -26,9 +40,22 @@ android {
         }
     }
 
+    // 未配签名（无 local.properties）时不建该配置，纯构建照常可跑
+    signingConfigs {
+        if (hasSigning) {
+            create("release") {
+                storeFile = file(signStoreFile!!)
+                storePassword = localProps.getProperty("storePassword")
+                keyAlias = localProps.getProperty("keyAlias")
+                keyPassword = localProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            if (hasSigning) signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -44,20 +71,15 @@ android {
         buildConfig = true
     }
     defaultConfig {
-        // 应用内更新候选源（1.3.2 更新分流）：
-        //   稳定版通道 → Gitee 的 latest.json（仅正式版，随正式版发版更新）
-        //   Dev 版通道 → GitHub 的 latest-dev.json（最新 Dev 版，随 Dev 发版更新）
-        // GitHub 上 latest.json 仍保持稳定版信息（= 稳定版在 GitHub 的镜像），
-        // 即 GitHub 同时承载稳定版 + Dev 版，Gitee 仅稳定版。
-        // 下载 URL 按版本号模板构造：{base}/v{versionName 去空格}/NotiCleaner-{versionName 去空格}.apk
-        buildConfigField("String", "UPDATE_LATEST_GITHUB",
-            "\"https://raw.githubusercontent.com/ytdttj/NotificationCleaner/main/latest-dev.json\"")
-        buildConfigField("String", "UPDATE_LATEST_GITEE",
-            "\"https://gitee.com/ytdttj/NotiCleaner/raw/main/latest.json\"")
-        buildConfigField("String", "UPDATE_APK_GITHUB",
-            "\"https://github.com/ytdttj/NotificationCleaner/releases/download\"")
-        buildConfigField("String", "UPDATE_APK_GITEE",
-            "\"https://gitee.com/ytdttj/NotiCleaner/releases/download\"")
+        // 应用内更新源（单通道）：本仓库 main 上的 latest.json，正式版发版时由 build-release.yml
+        // 回写（versionCode/versionName/notes/sha256）。⚠️ 回写与本处读取必须同仓库同分支，
+        // 否则客户端永远看不到新版本。
+        // 下载 URL 按版本号拼（与工作流的 tag / 资产名一一对应）：
+        //   {base}/v{versionName 去空格}.{versionCode}/NotiCleaner.{同}.{code}.release.apk
+        buildConfigField("String", "UPDATE_LATEST",
+            "\"https://raw.githubusercontent.com/Vstory/NotificationCleaner/main/latest.json\"")
+        buildConfigField("String", "UPDATE_APK_BASE",
+            "\"https://github.com/Vstory/NotificationCleaner/releases/download\"")
     }
     sourceSets {
         // 1.3.2（P3-7②）：model.bin 已移至 src/main/resources/model/（单通道打包）——

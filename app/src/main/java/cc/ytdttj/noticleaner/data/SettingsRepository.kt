@@ -95,16 +95,6 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { it[keySimUnlocked] = value }
     }
 
-    // ---- 更新通道（1.3.2）：稳定版=Gitee / Dev 版=GitHub，默认稳定版 ----
-    private val keyUpdateChannel = stringPreferencesKey("update_channel")
-
-    /** 取值为 [cc.ytdttj.noticleaner.update.UpdateChannel] 的 name（"STABLE"/"DEV"） */
-    val updateChannel: Flow<String> = context.dataStore.data.map { it[keyUpdateChannel] ?: "STABLE" }
-
-    suspend fun setUpdateChannel(value: String) {
-        context.dataStore.edit { it[keyUpdateChannel] = value }
-    }
-
     // ---- 历史通知保留天数（Dev 6）：监控式滚动，最新的顶掉 N 天前的 ----
     private val keyHistoryRetentionDays = intPreferencesKey("history_retention_days")
 

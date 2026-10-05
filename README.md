@@ -2,7 +2,7 @@
 
 利用本地 AI 模型，清理你的手机通知栏。所有推理与学习均在端上完成，无任何云端依赖。
 
-[![Release](https://img.shields.io/github/v/release/ytdttj/NotificationCleaner)](https://github.com/ytdttj/NotificationCleaner/releases/latest)
+[![Release](https://img.shields.io/github/v/release/Vstory/NotificationCleaner)](https://github.com/Vstory/NotificationCleaner/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Min SDK](https://img.shields.io/badge/Android-13%2B-3DDC84)](https://developer.android.com/about/versions/13)
 
@@ -27,12 +27,11 @@
   - **控制中心磁贴**：Shizuku / Root 直接执行强制重绑；普通用户一键跳转权限页
 - **液态玻璃界面**（2.0.0 新增）：Material You 动态取色 + 连续曲率圆角；可切换「柔光 / 磨砂」两档玻璃，悬浮底栏实时透视页面内容
 - **超级岛（实验）**：支付类通知上岛（HyperOS 焦点通知协议），白名单可逐 App 开关
-- **应用内更新**：稳定版走 Gitee、Dev 测试版走 GitHub，双通道可选，sha256 校验
+- **应用内更新**：本 APP 内直接检查本仓库的 GitHub Releases 并下载安装，sha256 校验
 
 ## 下载
 
-- 稳定版：[GitHub Releases](https://github.com/ytdttj/NotificationCleaner/releases/latest) 或 [Gitee Releases](https://gitee.com/ytdttj/NotiCleaner/releases)
-- Dev 测试版：本 APP 内「设置 → 更新通道 → Dev 版」即可切换到 GitHub Dev 通道
+- 正式版：[GitHub Releases](https://github.com/Vstory/NotificationCleaner/releases/latest)
 
 ## 构建
 
