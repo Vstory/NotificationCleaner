@@ -22,7 +22,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -46,8 +45,8 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
@@ -299,120 +298,95 @@ fun SettingsScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+            .verticalScroll(rememberScrollState()),
     ) {
-        // ---- 拦截模式 ----
-        Card(Modifier.fillMaxWidth()) {
+        Spacer(Modifier.height(8.dp))
+
+        // ---- 过滤 ----
+        SmallTitle("过滤")
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             SwitchPreference(
                 checked = intercept,
                 onCheckedChange = { vm.setInterceptMode(it) },
                 title = "拦截模式",
                 summary = "关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）",
             )
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 过滤阈值 ----
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("过滤阈值", style = MiuixTheme.textStyles.headline1, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。",
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Spacer(Modifier.height(12.dp))
-                TextField(
-                    value = thresholdInput,
-                    // 仅编辑本地输入，点击"保存"后才生效
-                    onValueChange = { thresholdInput = it },
-                    label = "阈值 (0.5~1.0)",
-                    useLabelAsPlaceholder = true,
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(text = "恢复默认", onClick = {
-                        thresholdInput = "0.80"
-                        vm.setThreshold(0.8f)
-                    })
-                    Spacer(Modifier.width(8.dp))
-                    val parsed = thresholdInput.toFloatOrNull()
-                    val valid = parsed != null && parsed in 0.5f..1.0f && parsed != threshold
-                    Button(
-                        enabled = valid,
-                        onClick = { parsed?.let { vm.setThreshold(it) } },
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) { Text("保存") }
-                }
-                if (thresholdInput.toFloatOrNull()?.let { it !in 0.5f..1.0f } == true) {
-                    Text(
-                        "请输入 0.5 ~ 1.0 之间的数值",
-                        color = MiuixTheme.colorScheme.error,
-                        style = MiuixTheme.textStyles.footnote1,
+            BasicComponent(
+                title = "过滤阈值",
+                summary = "AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。",
+                bottomAction = {
+                    TextField(
+                        value = thresholdInput,
+                        // 仅编辑本地输入，点击"保存"后才生效
+                        onValueChange = { thresholdInput = it },
+                        label = "阈值 (0.5~1.0)",
+                        useLabelAsPlaceholder = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 统计 ----
-        Card(Modifier.fillMaxWidth()) {
-            ArrowPreference(
-                title = "已过滤 $filteredCount 条通知",
-                onClick = { onOpenStats("filtered") },
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                        TextButton(text = "恢复默认", onClick = {
+                            thresholdInput = "0.80"
+                            vm.setThreshold(0.8f)
+                        })
+                        Spacer(Modifier.width(8.dp))
+                        val parsed = thresholdInput.toFloatOrNull()
+                        val valid = parsed != null && parsed in 0.5f..1.0f && parsed != threshold
+                        Button(
+                            enabled = valid,
+                            onClick = { parsed?.let { vm.setThreshold(it) } },
+                            colors = ButtonDefaults.buttonColorsPrimary(),
+                        ) { Text("保存") }
+                    }
+                    if (thresholdInput.toFloatOrNull()?.let { it !in 0.5f..1.0f } == true) {
+                        Text(
+                            "请输入 0.5 ~ 1.0 之间的数值",
+                            color = MiuixTheme.colorScheme.error,
+                            style = MiuixTheme.textStyles.footnote1,
+                        )
+                    }
+                },
             )
-            HorizontalDivider()
-            ArrowPreference(
-                title = "已学习 $learnedCount 条通知",
-                onClick = { onOpenStats("learned") },
-            )
         }
-        Spacer(Modifier.height(12.dp))
 
-        // ---- 多任务隐藏 ----
-        Card(Modifier.fillMaxWidth()) {
+        // ---- 权限与保活 ----
+        SmallTitle("权限与保活")
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+            ArrowPreference(
+                title = "通知监听权限",
+                summary = if (keepAlive.listenerEnabled) "已启用" else "未启用，点击前往授权",
+                onClick = { vm.openListenerSettings() },
+            )
+            val hint = manufacturerHint
+            ArrowPreference(
+                title = "电池优化白名单",
+                summary = if (keepAlive.ignoringBattery) "已启用" else "未启用，点击前往设置",
+                bottomAction = if (hint != null) {
+                    {
+                        Text(
+                            hint,
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                } else {
+                    null
+                },
+                onClick = { vm.requestIgnoreBattery() },
+            )
             SwitchPreference(
                 checked = excludeRecents,
                 onCheckedChange = { vm.setExcludeFromRecents(it) },
                 title = "在多任务界面隐藏",
                 summary = "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
             )
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 权限检查（1.3.0 beta2：原「后台保活」，高级项折叠） ----
-        Card(Modifier.fillMaxWidth()) {
-            ArrowPreference(
-                title = "通知监听权限",
-                summary = if (keepAlive.listenerEnabled) "已启用" else "未启用，点击前往授权",
-                onClick = { vm.openListenerSettings() },
-            )
-            HorizontalDivider()
-            ArrowPreference(
-                title = "电池优化白名单",
-                summary = if (keepAlive.ignoringBattery) "已启用" else "未启用，点击前往设置",
-                onClick = { vm.requestIgnoreBattery() },
-            )
-            manufacturerHint?.let { hint ->
-                Text(
-                    hint,
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-            }
-            HorizontalDivider()
             ArrowPreference(
                 title = "高级权限（可选）",
                 summary = if (permAdvancedOpen) "点击收起" else "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
                 onClick = { permAdvancedOpen = !permAdvancedOpen },
             )
             if (permAdvancedOpen) {
-                HorizontalDivider()
                 AdvancedRow(
                     label = "Shizuku 保活",
                     desc = "免 Root 写入电池优化白名单 / 通知监听权限",
@@ -457,26 +431,18 @@ fun SettingsScreen(
                 )
             }
         }
-        Spacer(Modifier.height(12.dp))
 
-        // ---- 检查更新 ----
-        val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
-        Card(Modifier.fillMaxWidth()) {
+        // ---- 数据 ----
+        SmallTitle("数据")
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             ArrowPreference(
-                title = "检查更新",
-                summary = if (checking) {
-                    "正在请求更新源…"
-                } else {
-                    "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}"
-                },
-                enabled = !checking,
-                onClick = { updateVm.checkUpdate() },
+                title = "已过滤 $filteredCount 条通知",
+                onClick = { onOpenStats("filtered") },
             )
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 导出诊断日志（1.3.2 恢复：1.3.0 设置页重排时丢失）----
-        Card(Modifier.fillMaxWidth()) {
+            ArrowPreference(
+                title = "已学习 $learnedCount 条通知",
+                onClick = { onOpenStats("learned") },
+            )
             ArrowPreference(
                 title = "导出诊断日志",
                 summary = when {
@@ -512,7 +478,6 @@ fun SettingsScreen(
                     }
                 },
             )
-            HorizontalDivider()
             // ---- 历史通知管理（Dev 6，折叠）----
             ArrowPreference(
                 title = "历史通知管理",
@@ -520,7 +485,6 @@ fun SettingsScreen(
                 onClick = { historyPanelOpen = !historyPanelOpen },
             )
             if (historyPanelOpen) {
-                HorizontalDivider()
                 ArrowPreference(
                     title = "导出历史通知 CSV",
                     summary = when {
@@ -555,7 +519,6 @@ fun SettingsScreen(
                         }
                     },
                 )
-                HorizontalDivider()
                 // 保留天数（监控式循环：最新的顶掉 N 天前的）
                 SliderPreference(
                     value = retentionDraft.toFloat(),
@@ -570,17 +533,27 @@ fun SettingsScreen(
                 )
             }
         }
-        Spacer(Modifier.height(12.dp))
 
-        // ---- 高级功能（1.3.0 beta2：默认折叠） ----
-        Card(Modifier.fillMaxWidth()) {
+        // ---- 关于 ----
+        SmallTitle("关于")
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+            val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
+            ArrowPreference(
+                title = "检查更新",
+                summary = if (checking) {
+                    "正在请求更新源…"
+                } else {
+                    "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}"
+                },
+                enabled = !checking,
+                onClick = { updateVm.checkUpdate() },
+            )
             ArrowPreference(
                 title = "高级功能",
                 summary = if (advancedOpen) "点击收起" else "AI 模型学习与重置",
                 onClick = { advancedOpen = !advancedOpen },
             )
             if (advancedOpen) {
-                HorizontalDivider()
                 // ---- AI 模型（重置需二次确认） ----
                 ArrowPreference(
                     title = "AI 模型",
@@ -588,11 +561,6 @@ fun SettingsScreen(
                     onClick = { confirmResetModel = true },
                 )
             }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 参考开源项目（Dev 17）：跳转开源项目列表 ----
-        Card(Modifier.fillMaxWidth()) {
             ArrowPreference(
                 title = "参考开源项目",
                 summary = "本项目的借鉴、参考与依赖来源",
