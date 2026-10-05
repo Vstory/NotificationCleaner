@@ -150,8 +150,8 @@ class MainHook : XposedModule() {
             skip("$NMS_CLASS#enqueueNotificationInternal", NoSuchMethodException())
             return
         }
-        val engine = FilterEngine().also { it.attach(this) }
-        val sink = ModuleLogSink()
+        val engine = sharedEngine(this)
+        val sink = sharedSink()
         runCatching {
             hook(target).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
                 .intercept(NmsBlockHooker(engine, sink))
@@ -298,6 +298,20 @@ class MainHook : XposedModule() {
             "stopServiceLocked",
             "stopServiceTokenLocked",
         )
+
+        // 热重载会重放 installHooks，而这两个对象各自攥着常驻资源：FilterEngine 的模型重建线程 +
+        // prefs 监听器，ModuleLogSink 的刷出线程 + 已注册的广播接收器。静态字段不随热重载重置、
+        // 实例却每次都是新的 ⇒ 每热重载一次就往 system_server 里永久留下一份（上游 Dev 5 二次
+        // systemMain 污染全局状态是同一类问题，只是量级小）。故进程内只造一份。
+        @Volatile private var sEngine: FilterEngine? = null
+        @Volatile private var sSink: ModuleLogSink? = null
+
+        @Synchronized
+        private fun sharedEngine(module: XposedInterface): FilterEngine =
+            sEngine ?: FilterEngine().also { it.attach(module) }.also { sEngine = it }
+
+        @Synchronized
+        private fun sharedSink(): ModuleLogSink = sSink ?: ModuleLogSink().also { sSink = it }
     }
 }
 

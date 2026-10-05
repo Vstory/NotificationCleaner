@@ -38,6 +38,12 @@ internal class FilterEngine {
         val content: String,
     )
 
+    /** 最近一次 attach 的框架接口：热重载会换新的模块实例，故存字段而不是捕获进监听闭包 */
+    @Volatile private var api: io.github.libxposed.api.XposedInterface? = null
+
+    /** 已注册过 prefs 监听：本实例被热重载复用时据此跳过重复注册（监听器不随热重载清理） */
+    private var listenerRegistered = false
+
     @Volatile private var config = ModuleConfig()
 
     /** 已应用用户学习修正的内置模型；未加载为 null（此时全部放行，靠 NLS 兜底） */
@@ -124,13 +130,18 @@ internal class FilterEngine {
         }
     }
 
-    // ---- 配置与模型加载（attach 由 MainHook 调用一次） ----
+    // ---- 配置与模型加载（attach 由 MainHook 调用；热重载复用时同一实例会再次 attach） ----
 
-    fun attach(api: io.github.libxposed.api.XposedInterface) {
+    fun attach(newApi: io.github.libxposed.api.XposedInterface) {
+        api = newApi
         try {
-            val prefs = api.getRemotePreferences(ModuleConfigCodec.PREFS_NAME)
+            val prefs = newApi.getRemotePreferences(ModuleConfigCodec.PREFS_NAME)
             refresh(prefs)
-            refreshModel(api)
+            refreshModel(newApi)
+            // 热重载复用本实例（见 MainHook.sharedEngine）：监听已注册过就只刷新 api，
+            // 再 register 一次就是把监听器堆在别人的进程里，永不回收。
+            if (listenerRegistered) return
+            listenerRegistered = true
             val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { p, _ ->
                 runCatching {
                     refresh(p)
