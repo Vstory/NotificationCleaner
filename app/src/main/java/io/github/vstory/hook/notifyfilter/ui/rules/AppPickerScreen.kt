@@ -17,18 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -39,11 +27,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vstory.hook.notifyfilter.ui.history.AppIcon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Checkbox
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 选择器会话结果（跨页面传递选中项；null = 未选择/取消） */
 object AppPickerSession {
@@ -53,7 +54,6 @@ object AppPickerSession {
 
 private data class AppInfo(val pkg: String, val label: String)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppPickerScreen(
     title: String,
@@ -82,20 +82,22 @@ fun AppPickerScreen(
         }
         loaded = true
     }
-    var query by remember { mutableStateOf("") }
+    // 存 TextFieldValue 而非 String：miuix TextField 每次重组以 value 重建光标，
+    // 只留 String 会把光标顶到末尾，中间插入/删除时跳位
+    var query by remember { mutableStateOf(TextFieldValue("")) }
     var selected by remember {
         mutableStateOf(AppPickerSession.initial.associate { it.first to it.second })
     }
 
-    val filtered = if (query.isBlank()) allApps
+    val filtered = if (query.text.isBlank()) allApps
     else allApps.filter {
-        it.label.contains(query, true) || it.pkg.contains(query, true)
+        it.label.contains(query.text, true) || it.pkg.contains(query.text, true)
     }
 
-    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
+    Scaffold(
         topBar = {
-            io.github.vstory.hook.notifyfilter.ui.glass.NfTopAppBar(
-                title = { Text(title) },
+            SmallTopAppBar(
+                title = title,
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
                 },
@@ -110,10 +112,11 @@ fun AppPickerScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedTextField(
+            TextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("搜索 App 名称或包名") },
+                label = "搜索 App 名称或包名",
+                useLabelAsPlaceholder = true,
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
             )
@@ -124,19 +127,23 @@ fun AppPickerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     CircularProgressIndicator()
-                    Text("正在加载应用列表…", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 12.dp))
+                    Text(
+                        "正在加载应用列表…",
+                        style = MiuixTheme.textStyles.footnote1,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
                 }
             } else if (filtered.isEmpty()) {
                 Column(
                     Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
-                ) { Text("无匹配应用", style = MaterialTheme.typography.titleMedium) }
+                ) { Text("无匹配应用", style = MiuixTheme.textStyles.headline2) }
             } else {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                     items(filtered, key = { it.pkg }) { app ->
                         val checked = selected.containsKey(app.pkg)
-                        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(
+                        Card(
                             onClick = {
                                 if (multiSelect) {
                                     selected = if (checked) selected - app.pkg else selected + (app.pkg to app.label)
@@ -154,13 +161,16 @@ fun AppPickerScreen(
                                 AppIcon(app.pkg, 36)
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(app.label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(app.pkg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.label, style = MiuixTheme.textStyles.body1, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(app.pkg, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.outline, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 }
                                 if (multiSelect) {
-                                    Checkbox(checked = checked, onCheckedChange = {
-                                        selected = if (it) selected + (app.pkg to app.label) else selected - app.pkg
-                                    })
+                                    Checkbox(
+                                        state = if (checked) ToggleableState.On else ToggleableState.Off,
+                                        onClick = {
+                                            selected = if (checked) selected - app.pkg else selected + (app.pkg to app.label)
+                                        },
+                                    )
                                 }
                             }
                         }
