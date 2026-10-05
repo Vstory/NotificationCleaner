@@ -115,8 +115,15 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.17.0")
-    implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.core:core-ktx:1.18.0")
+    // ⚠️ activity 必须 ≥ 1.12.0：miuix 0.9.4 的 Scaffold 自带 MiuixPopupHost，弹层的返回键走
+    //    navigationevent 的 NavigationBackHandler，它要求宿主提供 NavigationEventDispatcherOwner；
+    //    ComponentActivity 到 1.12.0 才实现该接口（1.11.0 的字节码里一处都没有，也不会 set
+    //    ViewTreeNavigationEventDispatcherOwner）。钉在 1.11.0 时只要一注册弹层就抛
+    //    IllegalStateException: No NavigationEventDispatcher was provided via
+    //    LocalNavigationEventDispatcherOwner —— 弹层列表为空时不渲染 PopupEntry，所以表现为
+    //    「平时能开界面、弹一次就闪退」。
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
 
