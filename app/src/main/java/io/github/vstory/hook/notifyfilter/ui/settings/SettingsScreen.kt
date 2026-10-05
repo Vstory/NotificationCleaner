@@ -1,6 +1,5 @@
 package io.github.vstory.hook.notifyfilter.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,9 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -45,16 +42,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.Slider
-import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SliderPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class SettingsViewModel(
@@ -260,9 +260,15 @@ fun SettingsScreen(
     val lspServiceState by vm.lspServiceState.collectAsState()
     val modelInfo by vm.modelInfo.collectAsState()
     val execResult by vm.execResult.collectAsState()
-    val execBusy by vm.execBusy.collectAsState()
+    val historyRetentionDays by vm.historyRetentionDays.collectAsState()
     var thresholdInput by remember(threshold) { mutableStateOf("%.2f".format(threshold)) }
+    var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
+
+    var permAdvancedOpen by remember { mutableStateOf(false) }
+    var historyPanelOpen by remember { mutableStateOf(false) }
+    var advancedOpen by remember { mutableStateOf(false) }
+    var confirmResetModel by remember { mutableStateOf(false) }
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
     val context = LocalContext.current
@@ -278,6 +284,18 @@ fun SettingsScreen(
         prevExclude = excludeRecents
     }
 
+    val diagContext = LocalContext.current
+    val diagScope = rememberCoroutineScope()
+    var diagExporting by remember { mutableStateOf(false) }
+    var diagMsg by remember { mutableStateOf<String?>(null) }
+    val csvScope = rememberCoroutineScope()
+    var csvExporting by remember { mutableStateOf(false) }
+    var csvMsg by remember { mutableStateOf<String?>(null) }
+
+    val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
+        viewModel(key = "update", factory = viewModelFactory { initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() } })
+    val updateState by updateVm.state.collectAsState()
+
     Column(
         Modifier
             .fillMaxSize()
@@ -286,37 +304,36 @@ fun SettingsScreen(
     ) {
         // ---- 拦截模式 ----
         Card(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("拦截模式", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                    Text("关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）", style = MiuixTheme.textStyles.footnote1)
-                }
-                Switch(checked = intercept, onCheckedChange = { vm.setInterceptMode(it) })
-            }
+            SwitchPreference(
+                checked = intercept,
+                onCheckedChange = { vm.setInterceptMode(it) },
+                title = "拦截模式",
+                summary = "关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）",
+            )
         }
         Spacer(Modifier.height(12.dp))
 
         // ---- 过滤阈值 ----
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("过滤阈值", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
+                Text("过滤阈值", style = MiuixTheme.textStyles.headline1, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(4.dp))
-                Text("AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。", style = MiuixTheme.textStyles.footnote1)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextField(
-                        value = thresholdInput,
-                        onValueChange = { s ->
-                            // 仅编辑本地输入，点击"保存"后才生效
-                            thresholdInput = s
-                        },
-                        label = "阈值 (0.5~1.0)",
-                        useLabelAsPlaceholder = true,
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
+                Text(
+                    "AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。",
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.height(12.dp))
+                TextField(
+                    value = thresholdInput,
+                    // 仅编辑本地输入，点击"保存"后才生效
+                    onValueChange = { thresholdInput = it },
+                    label = "阈值 (0.5~1.0)",
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(text = "恢复默认", onClick = {
                         thresholdInput = "0.80"
@@ -328,10 +345,15 @@ fun SettingsScreen(
                     Button(
                         enabled = valid,
                         onClick = { parsed?.let { vm.setThreshold(it) } },
+                        colors = ButtonDefaults.buttonColorsPrimary(),
                     ) { Text("保存") }
                 }
                 if (thresholdInput.toFloatOrNull()?.let { it !in 0.5f..1.0f } == true) {
-                    Text("请输入 0.5 ~ 1.0 之间的数值", color = MiuixTheme.colorScheme.error, style = MiuixTheme.textStyles.footnote1)
+                    Text(
+                        "请输入 0.5 ~ 1.0 之间的数值",
+                        color = MiuixTheme.colorScheme.error,
+                        style = MiuixTheme.textStyles.footnote1,
+                    )
                 }
             }
         }
@@ -339,344 +361,246 @@ fun SettingsScreen(
 
         // ---- 统计 ----
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("统计", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().clickable { onOpenStats("filtered") }.padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("已过滤 ${filteredCount} 条通知", Modifier.weight(1f))
-                    Text("查看明细 ›", color = MiuixTheme.colorScheme.primary, style = MiuixTheme.textStyles.footnote1)
-                }
-                HorizontalDivider()
-                Row(
-                    Modifier.fillMaxWidth().clickable { onOpenStats("learned") }.padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("已学习 ${learnedCount} 条通知", Modifier.weight(1f))
-                    Text("查看明细 ›", color = MiuixTheme.colorScheme.primary, style = MiuixTheme.textStyles.footnote1)
-                }
-            }
+            ArrowPreference(
+                title = "已过滤 $filteredCount 条通知",
+                onClick = { onOpenStats("filtered") },
+            )
+            HorizontalDivider()
+            ArrowPreference(
+                title = "已学习 $learnedCount 条通知",
+                onClick = { onOpenStats("learned") },
+            )
         }
         Spacer(Modifier.height(12.dp))
 
         // ---- 多任务隐藏 ----
         Card(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("在多任务界面隐藏", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
-                        style = MiuixTheme.textStyles.footnote1,
-                    )
-                }
-                Switch(checked = excludeRecents, onCheckedChange = { vm.setExcludeFromRecents(it) })
-            }
+            SwitchPreference(
+                checked = excludeRecents,
+                onCheckedChange = { vm.setExcludeFromRecents(it) },
+                title = "在多任务界面隐藏",
+                summary = "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
+            )
         }
         Spacer(Modifier.height(12.dp))
 
         // ---- 权限检查（1.3.0 beta2：原「后台保活」，高级项折叠） ----
-        var permAdvancedOpen by remember { mutableStateOf(false) }
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("权限检查", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                StatusRow("通知监听权限", keepAlive.listenerEnabled) { vm.openListenerSettings() }
-                StatusRow("电池优化白名单", keepAlive.ignoringBattery) { vm.requestIgnoreBattery() }
-                manufacturerHint?.let {
-                    Text(it, style = MiuixTheme.textStyles.footnote1, color = Color.Gray)
-                    Spacer(Modifier.height(8.dp))
-                }
+            ArrowPreference(
+                title = "通知监听权限",
+                summary = if (keepAlive.listenerEnabled) "已启用" else "未启用，点击前往授权",
+                onClick = { vm.openListenerSettings() },
+            )
+            HorizontalDivider()
+            ArrowPreference(
+                title = "电池优化白名单",
+                summary = if (keepAlive.ignoringBattery) "已启用" else "未启用，点击前往设置",
+                onClick = { vm.requestIgnoreBattery() },
+            )
+            manufacturerHint?.let { hint ->
+                Text(
+                    hint,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            HorizontalDivider()
+            ArrowPreference(
+                title = "高级权限（可选）",
+                summary = if (permAdvancedOpen) "点击收起" else "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
+                onClick = { permAdvancedOpen = !permAdvancedOpen },
+            )
+            if (permAdvancedOpen) {
                 HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().clickable { permAdvancedOpen = !permAdvancedOpen },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "高级权限（可选）",
-                        style = MiuixTheme.textStyles.body1,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(if (permAdvancedOpen) "收起" else "展开", style = MiuixTheme.textStyles.footnote1)
-                }
-                if (permAdvancedOpen) {
-                    Spacer(Modifier.height(4.dp))
-                    AdvancedRow(
-                        label = "Shizuku 保活",
-                        desc = "免 Root 写入电池优化白名单 / 通知监听权限",
-                        ok = keepAlive.shizukuAvailable,
-                        actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
-                        onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
-                    )
-                    AdvancedRow(
-                        label = "Root 保活",
-                        desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
-                        ok = keepAlive.rootAvailable,
-                        actionLabel = "应用",
-                        onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
-                    )
-                    AdvancedRow(
-                        label = "LSPosed 保活",
-                        desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
-                            "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
-                        ok = keepAlive.lspDetected == true,
-                        actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
-                                io.github.vstory.hook.notifyfilter.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
-                            )
-                        ) "授权" else null,
-                        onAction = {
-                            if (lspServiceState.bound) vm.requestKeepAliveScope()
-                            else vm.showToast("请先在 LSPosed 中启用本模块")
-                        },
-                    )
-                    AdvancedRow(
-                        label = "无障碍保活",
-                        desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
-                        ok = keepAlive.accessibilityEnabled,
-                        actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
-                        onAction = { vm.openAccessibilitySettings() },
-                    )
-                    AdvancedRow(
-                        label = "修复通知监听",
-                        desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
-                        ok = keepAlive.listenerEnabled,
-                        actionLabel = "修复",
-                        onAction = { vm.repairListener() },
-                    )
-                }
+                AdvancedRow(
+                    label = "Shizuku 保活",
+                    desc = "免 Root 写入电池优化白名单 / 通知监听权限",
+                    ok = keepAlive.shizukuAvailable,
+                    actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
+                    onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
+                )
+                AdvancedRow(
+                    label = "Root 保活",
+                    desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
+                    ok = keepAlive.rootAvailable,
+                    actionLabel = "应用",
+                    onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
+                )
+                AdvancedRow(
+                    label = "LSPosed 保活",
+                    desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
+                        "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
+                    ok = keepAlive.lspDetected == true,
+                    actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
+                            io.github.vstory.hook.notifyfilter.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
+                        )
+                    ) "授权" else null,
+                    onAction = {
+                        if (lspServiceState.bound) vm.requestKeepAliveScope()
+                        else vm.showToast("请先在 LSPosed 中启用本模块")
+                    },
+                )
+                AdvancedRow(
+                    label = "无障碍保活",
+                    desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
+                    ok = keepAlive.accessibilityEnabled,
+                    actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
+                    onAction = { vm.openAccessibilitySettings() },
+                )
+                AdvancedRow(
+                    label = "修复通知监听",
+                    desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
+                    ok = keepAlive.listenerEnabled,
+                    actionLabel = "修复",
+                    onAction = { vm.repairListener() },
+                )
             }
         }
         Spacer(Modifier.height(12.dp))
-
 
         // ---- 检查更新 ----
-        val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
-            viewModel(key = "update", factory = viewModelFactory { initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() } })
-        val updateState by updateVm.state.collectAsState()
+        val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("检查更新", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}",
-                            style = MiuixTheme.textStyles.footnote1,
-                        )
-                    }
-                    Button(
-                        enabled = updateState !is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking,
-                        onClick = { updateVm.checkUpdate() },
-                    ) { Text("检查") }
-                }
-            }
+            ArrowPreference(
+                title = "检查更新",
+                summary = if (checking) {
+                    "正在请求更新源…"
+                } else {
+                    "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}"
+                },
+                enabled = !checking,
+                onClick = { updateVm.checkUpdate() },
+            )
         }
+        Spacer(Modifier.height(12.dp))
+
         // ---- 导出诊断日志（1.3.2 恢复：1.3.0 设置页重排时丢失）----
-        // 内容 = 版本/权限设置快照 + logcat，经系统分享
-        val diagContext = LocalContext.current
-        val diagScope = rememberCoroutineScope()
-        var diagExporting by remember { mutableStateOf(false) }
-        var diagMsg by remember { mutableStateOf<String?>(null) }
-        Spacer(Modifier.height(12.dp))
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("导出诊断日志", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时",
-                            style = MiuixTheme.textStyles.footnote1,
-                        )
-                    }
-                    Button(
-                        enabled = !diagExporting,
-                        onClick = {
-                            diagExporting = true
-                            diagScope.launch {
-                                val msg = runCatching {
-                                    val file = io.github.vstory.hook.notifyfilter.diagnostics.DiagExporter.export(diagContext)
-                                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                                        diagContext,
-                                        "${diagContext.packageName}.fileprovider",
-                                        file,
-                                    )
-                                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
-                                        type = "application/zip"
-                                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    diagContext.startActivity(
-                                        android.content.Intent.createChooser(send, "分享诊断日志"),
-                                    )
-                                    "已导出: ${file.name}（${file.length() / 1024}KB）"
-                                }.getOrElse { "导出失败: ${it.message}" }
-                                diagExporting = false
-                                diagMsg = msg
-                            }
-                        },
-                    ) { Text(if (diagExporting) "导出中…" else "导出") }
-                }
-                diagMsg?.let {
-                    Spacer(Modifier.height(4.dp))
-                    Text(it, style = MiuixTheme.textStyles.footnote1, color = Color.Gray)
-                }
-                // ---- 历史通知管理（Dev 6，折叠）----
-                var historyPanelOpen by remember { mutableStateOf(false) }
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().clickable { historyPanelOpen = !historyPanelOpen },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (historyPanelOpen) "▾ 历史通知管理" else "▸ 历史通知管理",
-                        style = MiuixTheme.textStyles.body1,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                if (historyPanelOpen) {
-                    Spacer(Modifier.height(8.dp))
-                    // CSV 导出
-                    val csvScope = rememberCoroutineScope()
-                    var csvExporting by remember { mutableStateOf(false) }
-                    var csvMsg by remember { mutableStateOf<String?>(null) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("导出历史通知 CSV", style = MiuixTheme.textStyles.body1)
-                            Text(
-                                "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享",
-                                style = MiuixTheme.textStyles.footnote1,
+            ArrowPreference(
+                title = "导出诊断日志",
+                summary = when {
+                    diagExporting -> "导出中…"
+                    diagMsg != null -> diagMsg
+                    else -> "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时"
+                },
+                enabled = !diagExporting,
+                onClick = {
+                    diagMsg = null
+                    diagExporting = true
+                    diagScope.launch {
+                        val msg = runCatching {
+                            val file = io.github.vstory.hook.notifyfilter.diagnostics.DiagExporter.export(diagContext)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                diagContext,
+                                "${diagContext.packageName}.fileprovider",
+                                file,
                             )
-                        }
-                        Button(
-                            enabled = !csvExporting,
-                            onClick = {
-                                csvExporting = true
-                                csvScope.launch {
-                                    val msg = runCatching {
-                                        val file = io.github.vstory.hook.notifyfilter.diagnostics.HistoryCsvExporter.export(diagContext)
-                                        val uri = androidx.core.content.FileProvider.getUriForFile(
-                                            diagContext,
-                                            "${diagContext.packageName}.fileprovider",
-                                            file,
-                                        )
-                                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                            type = "text/csv"
-                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        diagContext.startActivity(
-                                            android.content.Intent.createChooser(send, "分享历史通知 CSV"),
-                                        )
-                                        "已导出 ${file.name}（${file.length() / 1024}KB）"
-                                    }.getOrElse { "导出失败: ${it.message}" }
-                                    csvExporting = false
-                                    csvMsg = msg
-                                }
-                            },
-                        ) { Text(if (csvExporting) "导出中…" else "导出") }
-                    }
-                    csvMsg?.let {
-                        Spacer(Modifier.height(4.dp))
-                        Text(it, style = MiuixTheme.textStyles.footnote1, color = Color.Gray)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    // 保留天数（监控式循环：最新的顶掉 N 天前的）
-                    val historyRetentionDays by vm.historyRetentionDays.collectAsState()
-                    var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
-                    Column(Modifier.fillMaxWidth()) {
-                        Text("历史保留天数：${retentionDraft} 天", style = MiuixTheme.textStyles.body1)
-                        Text(
-                            "未学习的历史通知只保留 N 天，最新通知不断把最老的顶掉（监控式循环保存）；已学习的标注不受影响",
-                            style = MiuixTheme.textStyles.footnote1,
-                        )
-                        Slider(
-                            value = retentionDraft.toFloat(),
-                            onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
-                            onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
-                            valueRange = 1f..30f,
-                            steps = 28,
-                        )
-                    }
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        // ---- 高级功能（1.3.0 beta2：默认折叠） ----
-        var advancedOpen by remember { mutableStateOf(false) }
-        var confirmResetModel by remember { mutableStateOf(false) }
-        Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().clickable { advancedOpen = !advancedOpen },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "高级功能",
-                        style = MiuixTheme.textStyles.headline2,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(if (advancedOpen) "收起" else "展开", style = MiuixTheme.textStyles.footnote1)
-                }
-                if (advancedOpen) {
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-                    // ---- AI 模型（重置需二次确认） ----
-                    Text("AI 模型", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text(modelInfo, style = MiuixTheme.textStyles.footnote1)
-                    Spacer(Modifier.height(8.dp))
-                    Button(onClick = { confirmResetModel = true }) { Text("重置模型（回到预训练基线）") }
-                    if (confirmResetModel) {
-                        OverlayDialog(
-                            show = true,
-                            title = "确认重置模型？",
-                            onDismissRequest = { confirmResetModel = false },
-                        ) {
-                            Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。")
-                            Spacer(Modifier.height(20.dp))
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                TextButton(
-                                    text = "取消",
-                                    onClick = { confirmResetModel = false },
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Button(
-                                    onClick = { vm.resetModel(); confirmResetModel = false },
-                                    modifier = Modifier.weight(1f),
-                                ) { Text("确认重置", style = MiuixTheme.textStyles.button) }
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
+                                type = "application/zip"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
-                        }
+                            diagContext.startActivity(
+                                android.content.Intent.createChooser(send, "分享诊断日志"),
+                            )
+                            "已导出: ${file.name}（${file.length() / 1024}KB）"
+                        }.getOrElse { "导出失败: ${it.message}" }
+                        diagExporting = false
+                        diagMsg = msg
                     }
-                }
+                },
+            )
+            HorizontalDivider()
+            // ---- 历史通知管理（Dev 6，折叠）----
+            ArrowPreference(
+                title = "历史通知管理",
+                summary = if (historyPanelOpen) "点击收起" else "CSV 导出与保留天数",
+                onClick = { historyPanelOpen = !historyPanelOpen },
+            )
+            if (historyPanelOpen) {
+                HorizontalDivider()
+                ArrowPreference(
+                    title = "导出历史通知 CSV",
+                    summary = when {
+                        csvExporting -> "导出中…"
+                        csvMsg != null -> csvMsg
+                        else -> "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享"
+                    },
+                    enabled = !csvExporting,
+                    onClick = {
+                        csvMsg = null
+                        csvExporting = true
+                        csvScope.launch {
+                            val msg = runCatching {
+                                val file = io.github.vstory.hook.notifyfilter.diagnostics.HistoryCsvExporter.export(diagContext)
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    diagContext,
+                                    "${diagContext.packageName}.fileprovider",
+                                    file,
+                                )
+                                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/csv"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                diagContext.startActivity(
+                                    android.content.Intent.createChooser(send, "分享历史通知 CSV"),
+                                )
+                                "已导出 ${file.name}（${file.length() / 1024}KB）"
+                            }.getOrElse { "导出失败: ${it.message}" }
+                            csvExporting = false
+                            csvMsg = msg
+                        }
+                    },
+                )
+                HorizontalDivider()
+                // 保留天数（监控式循环：最新的顶掉 N 天前的）
+                SliderPreference(
+                    value = retentionDraft.toFloat(),
+                    onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
+                    title = "历史保留天数",
+                    summary = "未学习的历史通知只保留设定天数，最新通知不断把最老的顶掉（监控式循环保存）；" +
+                        "已学习的标注不受影响",
+                    valueText = "$retentionDraft 天",
+                    valueRange = 1f..30f,
+                    steps = 28,
+                    onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
+                )
             }
         }
         Spacer(Modifier.height(12.dp))
-        // ---- 参考开源项目（Dev 17）：高级功能块下方，跳转开源项目列表 ----
-        Card(
-            Modifier.fillMaxWidth().clickable { onOpenOpenSource() },
-        ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "参考开源项目",
-                        style = MiuixTheme.textStyles.headline2,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "本项目的借鉴、参考与依赖来源",
-                        style = MiuixTheme.textStyles.footnote1,
-                    )
-                }
-                Text("›", style = MiuixTheme.textStyles.headline2, color = Color.Gray)
+
+        // ---- 高级功能（1.3.0 beta2：默认折叠） ----
+        Card(Modifier.fillMaxWidth()) {
+            ArrowPreference(
+                title = "高级功能",
+                summary = if (advancedOpen) "点击收起" else "AI 模型学习与重置",
+                onClick = { advancedOpen = !advancedOpen },
+            )
+            if (advancedOpen) {
+                HorizontalDivider()
+                // ---- AI 模型（重置需二次确认） ----
+                ArrowPreference(
+                    title = "AI 模型",
+                    summary = "$modelInfo；点击重置为预训练基线",
+                    onClick = { confirmResetModel = true },
+                )
             }
         }
         Spacer(Modifier.height(12.dp))
+
+        // ---- 参考开源项目（Dev 17）：跳转开源项目列表 ----
+        Card(Modifier.fillMaxWidth()) {
+            ArrowPreference(
+                title = "参考开源项目",
+                summary = "本项目的借鉴、参考与依赖来源",
+                onClick = { onOpenOpenSource() },
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
         when (val s = updateState) {
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking -> UpdateStatusDialog(
                 title = "正在检查更新…", text = "正在请求更新源",
@@ -707,6 +631,7 @@ fun SettingsScreen(
                     Button(
                         onClick = { updateVm.startDownload(s.release) },
                         modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
                     ) { Text("立即更新", style = MiuixTheme.textStyles.button) }
                 }
             }
@@ -745,10 +670,35 @@ fun SettingsScreen(
                     Button(
                         onClick = { updateVm.install(s.release, s.file) },
                         modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
                     ) { Text("安装", style = MiuixTheme.textStyles.button) }
                 }
             }
             io.github.vstory.hook.notifyfilter.update.UpdateState.Idle -> Unit
+        }
+
+        // ---- 重置模型二次确认 ----
+        if (confirmResetModel) {
+            OverlayDialog(
+                show = true,
+                title = "确认重置模型？",
+                onDismissRequest = { confirmResetModel = false },
+            ) {
+                Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。")
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(
+                        text = "取消",
+                        onClick = { confirmResetModel = false },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = { vm.resetModel(); confirmResetModel = false },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColorsPrimary(),
+                    ) { Text("确认重置", style = MiuixTheme.textStyles.button) }
+                }
+            }
         }
 
         // ---- 高级保活执行结果弹窗 ----
@@ -794,39 +744,22 @@ private fun UpdateStatusDialog(title: String, text: String, confirm: String?, on
 }
 
 @Composable
-private fun StatusRow(label: String, ok: Boolean, action: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        if (ok) {
-            Text("已启用", color = MiuixTheme.colorScheme.primary, style = MiuixTheme.textStyles.footnote1)
-        } else {
-            TextButton(text = "去开启", onClick = action)
-        }
-    }
-}
-
-@Composable
 private fun AdvancedRow(label: String, desc: String, ok: Boolean, actionLabel: String?, onAction: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MiuixTheme.textStyles.body2)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    when (ok) {
-                        true -> "可用"
-                        false -> "不可用"
-                    },
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = if (ok) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.outline,
-                )
+    BasicComponent(
+        title = label,
+        summary = desc,
+        endActions = {
+            Text(
+                if (ok) "可用" else "不可用",
+                style = MiuixTheme.textStyles.footnote1,
+                color = if (ok) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            if (actionLabel != null) {
+                Spacer(Modifier.width(8.dp))
+                TextButton(text = actionLabel, onClick = onAction)
             }
-            Text(desc, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.outline)
-        }
-        if (actionLabel != null) {
-            TextButton(text = actionLabel, onClick = onAction)
-        }
-    }
+        },
+    )
 }
 
 @Composable
