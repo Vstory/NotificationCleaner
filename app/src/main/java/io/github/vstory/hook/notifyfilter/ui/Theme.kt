@@ -75,8 +75,10 @@ fun AppTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colorScheme, shapes = AppShapes) {
         // 迁移期双主题：MiuixTheme 供已迁移的屏使用，MaterialTheme 供未迁移的屏使用。
         // 全部屏迁完并删除 material3 依赖后，本层 MaterialTheme 一并移除。
-        // MonetSystem 让 miuix 自读系统调色板（Android 12+ 可用），与上面的动态取色是同一份来源。
-        val miuixController = remember { ThemeController(colorSchemeMode = ColorSchemeMode.MonetSystem) }
+        // 不要改用 MonetSystem：miuix 的层次感来自中性底色的明度差（surface 纯黑 → 容器 #242424 → #434343），
+        // Monet 会把 surface、secondaryContainer 等整盘染上系统主题色，卡片与背景糊成一片，
+        // 输入框（默认填充 secondaryContainer）还会突兀跳色。System 用 miuix 出厂固定色板，仅跟随深浅色。
+        val miuixController = remember { ThemeController(colorSchemeMode = ColorSchemeMode.System) }
         MiuixTheme(controller = miuixController) {
             CompositionLocalProvider(
                 LocalGlassMode provides (UiTheme.from(saved) == UiTheme.GLASS),
