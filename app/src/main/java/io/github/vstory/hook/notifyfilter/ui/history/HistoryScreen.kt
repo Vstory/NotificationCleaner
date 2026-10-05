@@ -5,8 +5,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,32 +19,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Badge
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,8 +53,27 @@ import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveManager
 import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession
 import java.time.Instant
+import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import top.yukonga.miuix.kmp.basic.Badge
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.NumberPicker
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // 1.3.2（P3-6）：SimpleDateFormat（非线程安全）→ java.time DateTimeFormatter（不可变）
 private val timeFmt = DateTimeFormatter.ofPattern("MM-dd HH:mm")
@@ -76,10 +85,9 @@ internal fun formatTime(epochMs: Long): String =
 /** 日期分组头格式（Dev 6）："9月25日" */
 private val dayFmt = DateTimeFormatter.ofPattern("M月d日")
 
-private fun dayOf(epochMs: Long): java.time.LocalDate =
+private fun dayOf(epochMs: Long): LocalDate =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpenAppPicker: () -> Unit = {}) {
     val list by vm.list.collectAsState()
@@ -118,32 +126,21 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
 
     // 1.4.0 Dev 13：外层 MainScaffold 已应用状态栏 inset，此处必须清零，
     // 否则顶部 inset 双叠加 → 筛选按钮上方一大片空白
-    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
+    Scaffold(
         snackbarHost = {
             Box(Modifier.padding(bottom = snackbarBottomPadding)) { SnackbarHost(snackbar) }
         },
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                HistoryFilter.entries.forEach { f ->
-                    FilterChip(
-                        selected = filter == f,
-                        onClick = { vm.setFilter(f) },
-                        label = {
-                            Text(
-                                when (f) {
-                                    HistoryFilter.ALL -> "全部"
-                                    HistoryFilter.FILTERED -> "已过滤"
-                                    HistoryFilter.PASSED -> "正常"
-                                },
-                            )
-                        },
-                    )
-                }
+                TabRow(
+                    tabs = listOf("全部", "已过滤", "正常"),
+                    selectedTabIndex = HistoryFilter.entries.indexOf(filter).coerceAtLeast(0),
+                    onTabSelected = { vm.setFilter(HistoryFilter.entries[it]) },
+                )
             }
             var advOpen by remember { mutableStateOf(false) }
             Row(
@@ -151,12 +148,13 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                androidx.compose.material3.OutlinedTextField(
+                TextField(
                     value = search,
                     onValueChange = { vm.search.value = it },
-                    placeholder = { Text("搜索 App / 标题 / 内容") },
+                    label = "搜索 App / 标题 / 内容",
+                    useLabelAsPlaceholder = true,
                     singleLine = true,
-                    modifier = Modifier.weight(1f).height(56.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 AdvancedFilterButton(vm, onOpenAppPicker, advOpen) { advOpen = !advOpen }
             }
@@ -170,17 +168,17 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(if (search.isBlank()) "暂无通知记录" else "无匹配结果", style = MaterialTheme.typography.titleMedium)
+                    Text(if (search.isBlank()) "暂无通知记录" else "无匹配结果", style = MiuixTheme.textStyles.headline2)
                     if (search.isBlank()) {
                         Spacer(Modifier.height(4.dp))
-                        Text("请先在系统设置中授予通知监听权限", style = MaterialTheme.typography.bodySmall)
+                        Text("请先在系统设置中授予通知监听权限", style = MiuixTheme.textStyles.footnote1)
                     }
                 }
             } else {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    contentPadding = PaddingValues(12.dp),
                 ) {
                     // Dev 6：日期分组头——列表从新到旧，相邻两条日期不同时插入"9月25日"分隔
                     itemsIndexed(list, key = { _, n -> n.id }) { i, n ->
@@ -195,7 +193,7 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
         }
 
         selected?.let { n ->
-            io.github.vstory.hook.notifyfilter.ui.glass.NfModalBottomSheet(onDismissRequest = { vm.select(null) }) {
+            OverlayBottomSheet(show = true, onDismissRequest = { vm.select(null) }) {
                 NotificationDetail(
                     n = n,
                     onJumpChannel = {
@@ -219,12 +217,12 @@ private val failedIconKey = android.util.LruCache<String, Boolean>(192)
 @Composable
 fun AppIcon(packageName: String, size: Int = 40, fallbackText: String = packageName) {
     val context = LocalContext.current
-    val density = androidx.compose.ui.platform.LocalDensity.current.density
+    val density = LocalDensity.current.density
     // 1.1.7：按屏幕密度生成物理像素位图，避免 40px 位图在 3x 屏上被拉伸导致模糊
     val sizePx = (size * density).toInt().coerceAtLeast(8)
     // 1.3.2（P3-1）：渲染挪 IO 线程——缓存/负缓存命中时同步返回；未命中先出占位圆底，
     // 异步 getApplicationIcon + 绘制完成后重组替换，首次出现某包名不再阻塞组合
-    val bmp by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(
+    val bmp by produceState<androidx.compose.ui.graphics.ImageBitmap?>(
         null, packageName, sizePx,
     ) {
         val cacheKey = "$packageName:$sizePx"
@@ -252,18 +250,18 @@ fun AppIcon(packageName: String, size: Int = 40, fallbackText: String = packageN
         )
     } else {
         // 占位：浅色圆底 + APP 名首字符（1.1.7：补背景色，避免孤零零一个字母的观感）
-        androidx.compose.foundation.layout.Box(
+        Box(
             modifier = Modifier
                 .width(size.dp)
                 .height(size.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MiuixTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 fallbackText.take(1).uppercase(),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
     }
@@ -309,35 +307,35 @@ private fun renderAppIcon(
 
 @Composable
 private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppIcon(n.packageName, 40, fallbackText = n.appName)
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(n.appName, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Text(n.appName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
-                    Text(formatTime(n.postTime), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    Text(formatTime(n.postTime), style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.outline)
                     Spacer(Modifier.weight(1f))
                     when (n.decision) {
                         DECISION_FILTERED_BY_AI, DECISION_FILTERED_BY_AI_MODULE ->
                             Badge { Text("AI过滤 ${(n.adProbability * 100).toInt()}%") }
                         DECISION_FILTERED_BY_RULE, DECISION_FILTERED_BY_RULE_MODULE -> Badge { Text("规则过滤") }
                         DECISION_MANUAL_MARKED_AD -> Badge { Text("已学习广告") }
-                        DECISION_WHITELIST -> Text("白名单", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        DECISION_MEDIA -> Text("媒体", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                        DECISION_CONVERSATION -> Text("会话", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                        DECISION_ONGOING -> Text("常驻", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                        DECISION_WHITELIST -> Text("白名单", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.primary)
+                        DECISION_MEDIA -> Text("媒体", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.secondary)
+                        DECISION_CONVERSATION -> Text("会话", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.secondary)
+                        DECISION_ONGOING -> Text("常驻", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.secondary)
                     }
                     if (n.learned) {
                         Spacer(Modifier.width(4.dp))
-                        Text("已学习", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                        Text("已学习", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.tertiaryContainer)
                     }
                 }
                 if (n.title.isNotEmpty()) {
-                    Text(n.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(n.title, style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 if (n.content.isNotEmpty()) {
-                    Text(n.content, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(n.content, style = MiuixTheme.textStyles.footnote1, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 // 右下角：简单广告率（按阈值区间着色）
                 Row(
@@ -348,11 +346,11 @@ private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
                     val pct = (n.adProbability * 100).toInt()
                     Text(
                         "广告率 $pct%",
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MiuixTheme.textStyles.footnote2,
                         color = when {
-                            n.adProbability >= 0.8f -> MaterialTheme.colorScheme.error
-                            n.adProbability >= 0.5f -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.outline
+                            n.adProbability >= 0.8f -> MiuixTheme.colorScheme.error
+                            n.adProbability >= 0.5f -> MiuixTheme.colorScheme.tertiaryContainer
+                            else -> MiuixTheme.colorScheme.outline
                         },
                     )
                 }
@@ -384,18 +382,16 @@ private fun AdvancedFilterButton(
 ) {
     val adv by vm.advancedFilter.collectAsState()
     // 进入历史页时回读选择器结果（从 AppPicker 返回后本组合重建，LaunchedEffect 重跑）
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         AppPickerSession.result?.let { result ->
             vm.setAdvancedFilter(vm.advancedFilter.value.copy(apps = result))
             AppPickerSession.result = null
         }
     }
     val active = advancedActiveCount(adv)
-    FilterChip(
-        selected = open || active > 0,
-        onClick = onToggle,
-        label = { Text(if (active > 0) "筛选($active)" else "筛选") },
-    )
+    Button(onClick = onToggle) {
+        Text(if (active > 0) "筛选($active)" else "筛选", style = MiuixTheme.textStyles.button)
+    }
 }
 
 @Composable
@@ -408,26 +404,24 @@ private fun AdvancedFilterPanel(vm: HistoryViewModel, onOpenAppPicker: () -> Uni
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AssistChip(
+            Button(
                 onClick = {
                     // 复用规则页 AppPicker（含系统应用），结果经 AppPickerSession 回读
                     io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession.initial = adv.apps
                     onOpenAppPicker()
                 },
-                label = {
-                    Text(
-                        if (adv.apps.isEmpty()) "全部 App"
-                        else "App(${adv.apps.size})",
-                    )
-                },
-            )
-            FilterChip(
-                selected = adv.learnedOnly,
+            ) {
+                Text(
+                    if (adv.apps.isEmpty()) "全部 App"
+                    else "App(${adv.apps.size})",
+                    style = MiuixTheme.textStyles.button,
+                )
+            }
+            Button(
                 onClick = { vm.setAdvancedFilter(adv.copy(learnedOnly = !adv.learnedOnly)) },
-                label = { Text("已学习") },
-            )
+            ) { Text("已学习", style = MiuixTheme.textStyles.button) }
             if (advancedActiveCount(adv) > 0) {
-                TextButton(onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) }) { Text("清除") }
+                TextButton(text = "清除", onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) })
             }
         }
         Spacer(Modifier.height(6.dp))
@@ -452,29 +446,27 @@ private fun AdvancedFilterPanel(vm: HistoryViewModel, onOpenAppPicker: () -> Uni
 }
 
 /**
- * 日期选择字段（Dev 6 调整）：点击弹出 M3 日历（DatePickerDialog），不再手动输入。
- * 注意 DatePicker 用 UTC 毫秒——LocalDate 与 millis 互转必须走 UTC 日界，否则差一天。
+ * 日期选择字段（Dev 6）：点击弹出 miuix 滚轮（年/月/日三列 NumberPicker）。
+ * 原实现用 material3 DatePicker 日历，miuix 无日期组件（官方组件页仅 NumberPicker/ColorPicker），
+ * 故改用设置页更常见的滚轮形态。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DateField(label: String, value: java.time.LocalDate?, onUpdate: (java.time.LocalDate?) -> Unit, modifier: Modifier = Modifier) {
+private fun DateField(label: String, value: LocalDate?, onUpdate: (LocalDate?) -> Unit, modifier: Modifier = Modifier) {
     var showPicker by remember { mutableStateOf(false) }
     Box(modifier) {
-        androidx.compose.material3.OutlinedTextField(
+        TextField(
             value = value?.toString().orEmpty(),
             onValueChange = {},
-            label = { Text(label) },
-            placeholder = { Text("点选日期") },
+            label = label,
+            useLabelAsPlaceholder = true,
             readOnly = true,
             trailingIcon = {
-                androidx.compose.material3.IconButton(onClick = { showPicker = true }) {
-                    androidx.compose.material3.Icon(
-                        Icons.Filled.DateRange,
-                        contentDescription = "选择日期",
-                    )
+                IconButton(onClick = { showPicker = true }) {
+                    Icon(Icons.Filled.DateRange, contentDescription = "选择日期")
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
         )
         // 透明覆盖层：整个字段可点（readOnly TextField 自身不吃点击）
         Box(
@@ -482,49 +474,74 @@ private fun DateField(label: String, value: java.time.LocalDate?, onUpdate: (jav
         )
     }
     if (showPicker) {
-        val state = androidx.compose.material3.rememberDatePickerState(
-            initialSelectedDateMillis = value?.toEpochDay()?.times(86_400_000L),
-        )
-        androidx.compose.material3.DatePickerDialog(
+        val init = value ?: LocalDate.now()
+        var y by remember { mutableStateOf(init.year) }
+        var m by remember { mutableStateOf(init.monthValue) }
+        var d by remember { mutableStateOf(init.dayOfMonth) }
+        OverlayDialog(
+            show = true,
+            title = label,
             onDismissRequest = { showPicker = false },
-            confirmButton = {
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                NumberPicker(
+                    value = y,
+                    onValueChange = { y = it },
+                    range = 2020..2100,
+                    label = { "${it}年" },
+                    modifier = Modifier.weight(1f),
+                )
+                NumberPicker(
+                    value = m,
+                    onValueChange = { m = it },
+                    range = 1..12,
+                    label = { "${it}月" },
+                    modifier = Modifier.weight(1f),
+                )
+                NumberPicker(
+                    value = d,
+                    onValueChange = { d = it },
+                    range = 1..31,
+                    label = { "${it}日" },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(
-                    enabled = state.selectedDateMillis != null,
+                    text = "清除",
+                    onClick = { onUpdate(null); showPicker = false },
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
                     onClick = {
-                        // DatePicker 内部按 UTC 日界取整日，回读必须走 UTC
-                        onUpdate(
-                            state.selectedDateMillis?.let { ms ->
-                                java.time.Instant.ofEpochMilli(ms).atZone(java.time.ZoneId.of("UTC")).toLocalDate()
-                            },
-                        )
+                        // 滚轮日可留在 31：按当月实际天数收敛，避免 2月30日 这类非法日期
+                        val day = d.coerceAtMost(YearMonth.of(y, m).lengthOfMonth())
+                        onUpdate(LocalDate.of(y, m, day))
                         showPicker = false
                     },
-                ) { Text("确定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { onUpdate(null); showPicker = false }) { Text("清除") }
-            },
-        ) {
-            androidx.compose.material3.DatePicker(state = state)
+                    modifier = Modifier.weight(1f),
+                ) { Text("确定", style = MiuixTheme.textStyles.button) }
+            }
         }
     }
 }
 
 /** 日期分组头：居中日期文本（列表从新到旧，每天插入一个） */
 @Composable
-private fun DateHeader(day: java.time.LocalDate) {
+private fun DateHeader(day: LocalDate) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        androidx.compose.material3.HorizontalDivider(Modifier.weight(1f))
+        HorizontalDivider(Modifier.weight(1f))
         Text(
             dayFmt.format(day),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.outline,
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.outline,
         )
-        androidx.compose.material3.HorizontalDivider(Modifier.weight(1f))
+        HorizontalDivider(Modifier.weight(1f))
     }
 }
 
@@ -541,24 +558,24 @@ internal fun NotificationDetail(
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         if (n.title.isNotEmpty()) {
-            Text(n.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(n.title, style = MiuixTheme.textStyles.title3, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.height(8.dp))
-        Text(n.content.ifEmpty { "（无正文）" }, style = MaterialTheme.typography.bodyMedium)
+        Text(n.content.ifEmpty { "（无正文）" }, style = MiuixTheme.textStyles.body2)
         Spacer(Modifier.height(12.dp))
-        Text("发送时间：${formatTime(n.postTime)}", style = MaterialTheme.typography.bodySmall)
+        Text("发送时间：${formatTime(n.postTime)}", style = MiuixTheme.textStyles.footnote1)
         Text(
             // 1.2.3：label 解析失败时 appName 即包名，避免重复显示两次
             if (n.appName == n.packageName) "APP：${n.packageName}"
             else "APP：${n.appName} (${n.packageName})",
-            style = MaterialTheme.typography.bodySmall,
+            style = MiuixTheme.textStyles.footnote1,
         )
-        Text("发送通道：${n.channelId.ifEmpty { "（默认/未知）" }}", style = MaterialTheme.typography.bodySmall)
-        Text("AI 判定：广告概率 ${(n.adProbability * 100).toInt()}%", style = MaterialTheme.typography.bodySmall)
+        Text("发送通道：${n.channelId.ifEmpty { "（默认/未知）" }}", style = MiuixTheme.textStyles.footnote1)
+        Text("AI 判定：广告概率 ${(n.adProbability * 100).toInt()}%", style = MiuixTheme.textStyles.footnote1)
 
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onJumpChannel, Modifier.fillMaxWidth()) {
-            Text("跳转到该通道设置")
+        Button(onClick = onJumpChannel, modifier = Modifier.fillMaxWidth()) {
+            Text("跳转到该通道设置", style = MiuixTheme.textStyles.button)
         }
         Spacer(Modifier.height(8.dp))
         // 1.1.11：已学习的通知也允许再次点击学习（同方向重复点击累积权重）；随时可取消学习
@@ -571,12 +588,16 @@ internal fun NotificationDetail(
                 n.learned && n.learnLabel == 0 -> "再学一次正常(${n.learnCount + 1})"
                 else -> "正常通知"
             }
-            Button(onClick = { onLearn(1) }, Modifier.weight(1f)) { Text(adText) }
-            io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(onClick = { onLearn(0) }, Modifier.weight(1f)) { Text(normalText) }
+            Button(onClick = { onLearn(1) }, modifier = Modifier.weight(1f)) {
+                Text(adText, style = MiuixTheme.textStyles.button)
+            }
+            Button(onClick = { onLearn(0) }, modifier = Modifier.weight(1f)) {
+                Text(normalText, style = MiuixTheme.textStyles.button)
+            }
         }
         if (n.learned) {
             Spacer(Modifier.height(8.dp))
-            AssistChip(onClick = onUnlearn, label = { Text("取消学习") })
+            Button(onClick = onUnlearn) { Text("取消学习", style = MiuixTheme.textStyles.button) }
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -584,7 +605,7 @@ internal fun NotificationDetail(
 
 @Composable
 internal fun vmFactory(): androidx.lifecycle.ViewModelProvider.Factory =
-    androidx.lifecycle.viewmodel.viewModelFactory {
+    viewModelFactory {
         initializer {
             HistoryViewModel(ServiceLocator.db.notificationDao(), ServiceLocator.modelRepo)
         }
