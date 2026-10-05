@@ -95,6 +95,8 @@
 
 ⚠️ **`*Container` 角色是底色，不能当文字色**：深色下 `tertiaryContainer` = `#2B3B54`，与卡片底 `#242424` 的对比度只有 1.4:1，文字用它会隐形（浅色下 `#EAF2FF` 同样不可读）。文字要用配对的 `on*Container`（`onTertiaryContainer` = `#4788FF`，4.6:1）。
 
+⚠️ **`androidx.activity` 必须 ≥ 1.12.0**：miuix 的 `Scaffold` 自带 `MiuixPopupHost`，弹层返回键走 `navigationevent` 的 `NavigationBackHandler`，要求宿主提供 `NavigationEventDispatcherOwner` —— `ComponentActivity` 到 activity 1.12.0 才实现（1.11.0 既不实现也不 `set` ViewTree owner），钉 1.11.0 时弹层一出现就抛 `No NavigationEventDispatcher was provided via LocalNavigationEventDispatcherOwner`。`MiuixPopupHost` 只按已注册弹层循环渲染，没有弹层就不渲染该 handler ⇒ 表现为「能开界面、弹一次才闪退」。
+
 ⚠️ **不要给 miuix 用 `ColorSchemeMode.MonetSystem`**：miuix 的层次感来自中性底色的明度差（`surface` 纯黑 → `surfaceContainer` `#242424` → `secondaryContainer` `#434343`），Monet 会把这些角色整盘染上系统主题色，卡片与背景糊成一片、`TextField`（默认填充 `secondaryContainer`）突兀跳色。用 `ColorSchemeMode.System`。
 
 ## 阶段 3 · 清理与验收

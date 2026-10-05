@@ -35,7 +35,7 @@
 ### 阶段 3′ 待办
 
 - [ ] dex 残留检查（无 material3 / backdrop 类）
-- [ ] 真机安装 + 视觉走查
+- [ ] 真机安装 + 视觉走查（**必须触发至少一个弹层**：弹层是 `activity ≥ 1.12` 唯一的暴露路径，无弹层的走查测不到）
 - [ ] 合回 `main`（发版前提）
 
 ## 关键约定（易踩）
@@ -47,3 +47,5 @@
 - **不要给 miuix 用 `ColorSchemeMode.MonetSystem`**：miuix 的层次感靠中性底色的明度差（`surface` 纯黑 → `surfaceContainer` `#242424` → `secondaryContainer` `#434343`），Monet 会把这些角色整盘染上系统主题色 —— 卡片与背景糊成一片，`TextField`（默认填充 `secondaryContainer`）突兀跳色。用 `ColorSchemeMode.System`（出厂固定色板，仅跟随深浅色）。
 - **miuix 的 `*Container` 是底色，不是文字色**：深色下 `tertiaryContainer` = `#2B3B54`，与卡片底 `#242424` 的对比度只有 1.4:1，当文字用基本隐形（浅色下同样不可读）。文字必须用配对的 `on*Container`（`onTertiaryContainer` = `#4788FF`，4.6:1）。
 - **删文件前先全量 grep 调用点**：`GlassLib.kt` 的删除清单一直写着「已无任何界面引用」，实际 `MainActivity` 的玻璃底栏分支 + 三个屏的 `GlassFloatingBarClearance` 让位 padding 仍在读它，照单直接删会编译失败。
+- **`androidx.activity` 必须 ≥ 1.12.0**：miuix 0.9.4 的 `Scaffold` 自带 `MiuixPopupHost`，弹层的返回键走 `navigationevent` 的 `NavigationBackHandler`，它要求宿主提供 `NavigationEventDispatcherOwner`。`ComponentActivity` 到 **1.12.0** 才实现该接口（1.11.0 字节码里一处 `NavigationEventDispatcher` 都没有，也不 `ViewTreeNavigationEventDispatcherOwner.set`）。钉 1.11.0 时弹层一注册就抛 `IllegalStateException: No NavigationEventDispatcher was provided via LocalNavigationEventDispatcherOwner`（2026-10-06 实机闪退）。
+- **上述崩溃的排查陷阱**：`MiuixPopupHost` 是**按已注册弹层列表逐个渲染**的，列表为空时根本不渲染 `NavigationBackHandler` ⇒ 症状是「平时能打开界面、弹一次就闪退」。只在无弹层的页面上试，会误判成「迁移没问题」。另外 miuix 自带的 `WindowNavigationEventScope` 只是把 `ViewTreeNavigationEventDispatcherOwner.get(LocalView)` 透出来（`javap` 可验），宿主没有 owner 时它同样是空的，**替代不了升 activity**。
