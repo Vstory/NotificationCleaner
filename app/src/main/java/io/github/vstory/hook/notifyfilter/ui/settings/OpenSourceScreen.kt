@@ -3,9 +3,7 @@ package io.github.vstory.hook.notifyfilter.ui.settings
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -27,6 +24,7 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -76,51 +74,27 @@ fun OpenSourceScreen(onBack: () -> Unit = {}) {
         ) {
             item {
                 Text(
-                    "通知滤盒的诞生离不开以下开源项目——感谢每一位作者的付出。" +
-                        "点击卡片可访问对应的 GitHub 仓库。",
+                    "通知净化的诞生离不开以下开源项目——感谢每一位作者的付出。点击可访问对应的 GitHub 仓库。",
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(8.dp))
             }
             items(PROJECTS, key = { it.name }) { p ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    onClick = {
-                        runCatching {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.url)))
-                        }
-                    },
-                ) {
-                    Column(Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                p.name,
-                                style = MiuixTheme.textStyles.headline2,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                "↗",
-                                style = MiuixTheme.textStyles.headline2,
-                                color = MiuixTheme.colorScheme.primary,
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "作者：${p.author}",
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(p.usage, style = MiuixTheme.textStyles.footnote1)
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            p.url.removePrefix("https://"),
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
+                Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    ArrowPreference(
+                        title = p.name,
+                        summary = buildString {
+                            append(p.usage)
+                            append("\n作者：${p.author}")
+                            append("\n${p.url.removePrefix("https://")}")
+                        },
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.url)))
+                            }
+                        },
+                    )
                 }
             }
             item {
