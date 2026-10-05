@@ -13,18 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,6 +45,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.Slider
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class SettingsViewModel(
     private val settings: SettingsRepository,
@@ -309,11 +309,11 @@ fun SettingsScreen(
             .padding(16.dp),
     ) {
         // ---- 界面风格切换（1.4.0 Dev 4）：液态玻璃 / Material 3 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("界面风格", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("液态玻璃或 Material 3；玻璃模式含壁纸折射、磨砂卡片与胶囊底栏", style = MaterialTheme.typography.bodySmall)
+                    Text("界面风格", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
+                    Text("液态玻璃或 Material 3；玻璃模式含壁纸折射、磨砂卡片与胶囊底栏", style = MiuixTheme.textStyles.footnote1)
                 }
                 Switch(
                     checked = uiThemeMode == io.github.vstory.hook.notifyfilter.ui.UiTheme.GLASS.name,
@@ -329,32 +329,29 @@ fun SettingsScreen(
 
         // ---- 玻璃清晰度（1.4.0 Dev 5）：仅玻璃主题下显示 ----
         if (uiThemeMode == io.github.vstory.hook.notifyfilter.ui.UiTheme.GLASS.name) {
-            io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+            Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("玻璃清晰度", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("玻璃清晰度", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    Text("柔光玻璃近乎全透明；磨砂玻璃提供一定可读性", style = MaterialTheme.typography.bodySmall)
+                    Text("柔光玻璃近乎全透明；磨砂玻璃提供一定可读性", style = MiuixTheme.textStyles.footnote1)
                     Spacer(Modifier.height(8.dp))
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries.forEachIndexed { index, style ->
-                            SegmentedButton(
-                                selected = glassStyleMode == style.name,
-                                onClick = { vm.setGlassStyle(style) },
-                                shape = SegmentedButtonDefaults.itemShape(index = index, count = io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries.size),
-                            ) { Text(style.label) }
-                        }
-                    }
+                    TabRow(
+                        tabs = io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries.map { it.label },
+                        selectedTabIndex = io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries
+                            .indexOfFirst { it.name == glassStyleMode }.coerceAtLeast(0),
+                        onTabSelected = { vm.setGlassStyle(io.github.vstory.hook.notifyfilter.ui.GlassStyle.entries[it]) },
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))
         }
 
         // ---- 拦截模式 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("拦截模式", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）", style = MaterialTheme.typography.bodySmall)
+                    Text("拦截模式", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
+                    Text("关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）", style = MiuixTheme.textStyles.footnote1)
                 }
                 Switch(checked = intercept, onCheckedChange = { vm.setInterceptMode(it) })
             }
@@ -362,56 +359,57 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
 
         // ---- 过滤阈值 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("过滤阈值", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("过滤阈值", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
-                Text("AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。", style = MaterialTheme.typography.bodySmall)
+                Text("AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。", style = MiuixTheme.textStyles.footnote1)
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedTextField(
+                    TextField(
                         value = thresholdInput,
                         onValueChange = { s ->
                             // 仅编辑本地输入，点击"保存"后才生效
                             thresholdInput = s
                         },
-                        label = { Text("阈值 (0.5~1.0)") },
+                        label = "阈值 (0.5~1.0)",
+                        useLabelAsPlaceholder = true,
                         singleLine = true,
                         modifier = Modifier.weight(1f),
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = {
+                    TextButton(text = "恢复默认", onClick = {
                         thresholdInput = "0.80"
                         vm.setThreshold(0.8f)
-                    }) { Text("恢复默认") }
+                    })
                     Spacer(Modifier.width(8.dp))
                     val parsed = thresholdInput.toFloatOrNull()
                     val valid = parsed != null && parsed in 0.5f..1.0f && parsed != threshold
-                    androidx.compose.material3.Button(
+                    Button(
                         enabled = valid,
                         onClick = { parsed?.let { vm.setThreshold(it) } },
                     ) { Text("保存") }
                 }
                 if (thresholdInput.toFloatOrNull()?.let { it !in 0.5f..1.0f } == true) {
-                    Text("请输入 0.5 ~ 1.0 之间的数值", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    Text("请输入 0.5 ~ 1.0 之间的数值", color = MiuixTheme.colorScheme.error, style = MiuixTheme.textStyles.footnote1)
                 }
             }
         }
         Spacer(Modifier.height(12.dp))
 
         // ---- 统计 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("统计", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("统计", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 Row(
                     Modifier.fillMaxWidth().clickable { onOpenStats("filtered") }.padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("已过滤 ${filteredCount} 条通知", Modifier.weight(1f))
-                    Text("查看明细 ›", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                    Text("查看明细 ›", color = MiuixTheme.colorScheme.primary, style = MiuixTheme.textStyles.footnote1)
                 }
                 HorizontalDivider()
                 Row(
@@ -419,20 +417,20 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("已学习 ${learnedCount} 条通知", Modifier.weight(1f))
-                    Text("查看明细 ›", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                    Text("查看明细 ›", color = MiuixTheme.colorScheme.primary, style = MiuixTheme.textStyles.footnote1)
                 }
             }
         }
         Spacer(Modifier.height(12.dp))
 
         // ---- 多任务隐藏 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("在多任务界面隐藏", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("在多任务界面隐藏", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                     Text(
                         "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MiuixTheme.textStyles.footnote1,
                     )
                 }
                 Switch(checked = excludeRecents, onCheckedChange = { vm.setExcludeFromRecents(it) })
@@ -442,14 +440,14 @@ fun SettingsScreen(
 
         // ---- 权限检查（1.3.0 beta2：原「后台保活」，高级项折叠） ----
         var permAdvancedOpen by remember { mutableStateOf(false) }
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("权限检查", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("权限检查", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
                 StatusRow("通知监听权限", keepAlive.listenerEnabled) { vm.openListenerSettings() }
                 StatusRow("电池优化白名单", keepAlive.ignoringBattery) { vm.requestIgnoreBattery() }
                 manufacturerHint?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(it, style = MiuixTheme.textStyles.footnote1, color = Color.Gray)
                     Spacer(Modifier.height(8.dp))
                 }
                 HorizontalDivider()
@@ -460,11 +458,11 @@ fun SettingsScreen(
                 ) {
                     Text(
                         "高级权限（可选）",
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MiuixTheme.textStyles.body1,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(if (permAdvancedOpen) "收起" else "展开", style = MaterialTheme.typography.bodySmall)
+                    Text(if (permAdvancedOpen) "收起" else "展开", style = MiuixTheme.textStyles.footnote1)
                 }
                 if (permAdvancedOpen) {
                     Spacer(Modifier.height(4.dp))
@@ -520,17 +518,17 @@ fun SettingsScreen(
         val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
             viewModel(key = "update", factory = viewModelFactory { initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() } })
         val updateState by updateVm.state.collectAsState()
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("检查更新", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("检查更新", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                         Text(
                             "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MiuixTheme.textStyles.footnote1,
                         )
                     }
-                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(
+                    Button(
                         enabled = updateState !is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking,
                         onClick = { updateVm.checkUpdate() },
                     ) { Text("检查") }
@@ -544,17 +542,17 @@ fun SettingsScreen(
         var diagExporting by remember { mutableStateOf(false) }
         var diagMsg by remember { mutableStateOf<String?>(null) }
         Spacer(Modifier.height(12.dp))
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("导出诊断日志", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("导出诊断日志", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                         Text(
                             "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MiuixTheme.textStyles.footnote1,
                         )
                     }
-                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(
+                    Button(
                         enabled = !diagExporting,
                         onClick = {
                             diagExporting = true
@@ -585,7 +583,7 @@ fun SettingsScreen(
                 }
                 diagMsg?.let {
                     Spacer(Modifier.height(4.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(it, style = MiuixTheme.textStyles.footnote1, color = Color.Gray)
                 }
                 // ---- 历史通知管理（Dev 6，折叠）----
                 var historyPanelOpen by remember { mutableStateOf(false) }
@@ -596,7 +594,7 @@ fun SettingsScreen(
                 ) {
                     Text(
                         if (historyPanelOpen) "▾ 历史通知管理" else "▸ 历史通知管理",
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MiuixTheme.textStyles.body1,
                         fontWeight = FontWeight.SemiBold,
                     )
                 }
@@ -608,13 +606,13 @@ fun SettingsScreen(
                     var csvMsg by remember { mutableStateOf<String?>(null) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("导出历史通知 CSV", style = MaterialTheme.typography.titleSmall)
+                            Text("导出历史通知 CSV", style = MiuixTheme.textStyles.body1)
                             Text(
                                 "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享",
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MiuixTheme.textStyles.footnote1,
                             )
                         }
-                        io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(
+                        Button(
                             enabled = !csvExporting,
                             onClick = {
                                 csvExporting = true
@@ -644,19 +642,19 @@ fun SettingsScreen(
                     }
                     csvMsg?.let {
                         Spacer(Modifier.height(4.dp))
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        Text(it, style = MiuixTheme.textStyles.footnote1, color = Color.Gray)
                     }
                     Spacer(Modifier.height(12.dp))
                     // 保留天数（监控式循环：最新的顶掉 N 天前的）
                     val historyRetentionDays by vm.historyRetentionDays.collectAsState()
                     var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
                     Column(Modifier.fillMaxWidth()) {
-                        Text("历史保留天数：${retentionDraft} 天", style = MaterialTheme.typography.titleSmall)
+                        Text("历史保留天数：${retentionDraft} 天", style = MiuixTheme.textStyles.body1)
                         Text(
                             "未学习的历史通知只保留 N 天，最新通知不断把最老的顶掉（监控式循环保存）；已学习的标注不受影响",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MiuixTheme.textStyles.footnote1,
                         )
-                        androidx.compose.material3.Slider(
+                        Slider(
                             value = retentionDraft.toFloat(),
                             onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
                             onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
@@ -671,7 +669,7 @@ fun SettingsScreen(
         // ---- 高级功能（1.3.0 beta2：默认折叠） ----
         var advancedOpen by remember { mutableStateOf(false) }
         var confirmResetModel by remember { mutableStateOf(false) }
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+        Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(
                     Modifier.fillMaxWidth().clickable { advancedOpen = !advancedOpen },
@@ -679,55 +677,65 @@ fun SettingsScreen(
                 ) {
                     Text(
                         "高级功能",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MiuixTheme.textStyles.headline2,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(1f),
                     )
-                    Text(if (advancedOpen) "收起" else "展开", style = MaterialTheme.typography.bodySmall)
+                    Text(if (advancedOpen) "收起" else "展开", style = MiuixTheme.textStyles.footnote1)
                 }
                 if (advancedOpen) {
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))
                     // ---- AI 模型（重置需二次确认） ----
-                    Text("AI 模型", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("AI 模型", style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
-                    Text(modelInfo, style = MaterialTheme.typography.bodySmall)
+                    Text(modelInfo, style = MiuixTheme.textStyles.footnote1)
                     Spacer(Modifier.height(8.dp))
-                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(onClick = { confirmResetModel = true }) { Text("重置模型（回到预训练基线）") }
+                    Button(onClick = { confirmResetModel = true }) { Text("重置模型（回到预训练基线）") }
                     if (confirmResetModel) {
-                        io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+                        OverlayDialog(
+                            show = true,
+                            title = "确认重置模型？",
                             onDismissRequest = { confirmResetModel = false },
-                            title = { Text("确认重置模型？") },
-                            text = { Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。") },
-                            confirmButton = {
-                                TextButton(onClick = { vm.resetModel(); confirmResetModel = false }) { Text("确认重置") }
-                            },
-                            dismissButton = { TextButton(onClick = { confirmResetModel = false }) { Text("取消") } },
-                        )
+                        ) {
+                            Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。")
+                            Spacer(Modifier.height(20.dp))
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                TextButton(
+                                    text = "取消",
+                                    onClick = { confirmResetModel = false },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Button(
+                                    onClick = { vm.resetModel(); confirmResetModel = false },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("确认重置", style = MiuixTheme.textStyles.button) }
+                            }
+                        }
                     }
                 }
             }
         }
         Spacer(Modifier.height(12.dp))
         // ---- 参考开源项目（Dev 17）：高级功能块下方，跳转开源项目列表 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(
+        Card(
             Modifier.fillMaxWidth().clickable { onOpenOpenSource() },
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         "参考开源项目",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MiuixTheme.textStyles.headline2,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         "本项目的借鉴、参考与依赖来源",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MiuixTheme.textStyles.footnote1,
                     )
                 }
-                Text("›", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
+                Text("›", style = MiuixTheme.textStyles.headline2, color = Color.Gray)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -743,64 +751,108 @@ fun SettingsScreen(
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Error -> UpdateStatusDialog(
                 title = "更新失败", text = s.message, confirm = "知道了", onDismiss = { updateVm.reset() },
             )
-            is io.github.vstory.hook.notifyfilter.update.UpdateState.Available -> io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+            is io.github.vstory.hook.notifyfilter.update.UpdateState.Available -> OverlayDialog(
+                show = true,
+                title = "发现新版本 v${s.release.versionName}",
                 onDismissRequest = { updateVm.reset() },
-                title = { Text("发现新版本 v${s.release.versionName}") },
-                text = { Column { Text(s.release.notes.ifBlank { "无更新说明" }, style = MaterialTheme.typography.bodyMedium) } },
-                confirmButton = { TextButton(onClick = { updateVm.startDownload(s.release) }) { Text("立即更新") } },
-                dismissButton = { TextButton(onClick = { updateVm.reset() }) { Text("稍后再说") } },
-            )
-            is io.github.vstory.hook.notifyfilter.update.UpdateState.Downloading -> io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+            ) {
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    Text(s.release.notes.ifBlank { "无更新说明" }, style = MiuixTheme.textStyles.body2)
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(
+                        text = "稍后再说",
+                        onClick = { updateVm.reset() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = { updateVm.startDownload(s.release) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("立即更新", style = MiuixTheme.textStyles.button) }
+                }
+            }
+            is io.github.vstory.hook.notifyfilter.update.UpdateState.Downloading -> OverlayDialog(
+                show = true,
+                title = "正在下载 v${s.release.versionName}",
                 onDismissRequest = {},
-                title = { Text("正在下载 v${s.release.versionName}") },
-                text = {
-                    Column {
-                        androidx.compose.material3.LinearProgressIndicator(
-                            progress = { s.progress / 100f },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text("${s.progress}%", style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                confirmButton = { TextButton(onClick = { updateVm.cancelDownload() }) { Text("取消") } },
-            )
-            is io.github.vstory.hook.notifyfilter.update.UpdateState.ReadyToInstall -> io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+            ) {
+                LinearProgressIndicator(
+                    progress = s.progress / 100f,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("${s.progress}%", style = MiuixTheme.textStyles.footnote1)
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { updateVm.cancelDownload() },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("取消", style = MiuixTheme.textStyles.button) }
+                }
+            }
+            is io.github.vstory.hook.notifyfilter.update.UpdateState.ReadyToInstall -> OverlayDialog(
+                show = true,
+                title = "下载完成",
                 onDismissRequest = { updateVm.reset() },
-                title = { Text("下载完成") },
-                text = { Text("点击「安装」打开系统安装器升级到 v${s.release.versionName}。") },
-                confirmButton = { TextButton(onClick = { updateVm.install(s.release, s.file) }) { Text("安装") } },
-                dismissButton = { TextButton(onClick = { updateVm.reset() }) { Text("稍后") } },
-            )
+            ) {
+                Text("点击「安装」打开系统安装器升级到 v${s.release.versionName}。")
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextButton(
+                        text = "稍后",
+                        onClick = { updateVm.reset() },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Button(
+                        onClick = { updateVm.install(s.release, s.file) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("安装", style = MiuixTheme.textStyles.button) }
+                }
+            }
             io.github.vstory.hook.notifyfilter.update.UpdateState.Idle -> Unit
         }
 
         // ---- 高级保活执行结果弹窗 ----
         execResult?.let { result ->
-            io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+            OverlayDialog(
+                show = true,
+                title = "保活命令执行结果",
                 onDismissRequest = { vm.dismissExecResult() },
-                title = { Text("保活命令执行结果") },
-                text = {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        Text(result, style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                confirmButton = { TextButton(onClick = { vm.dismissExecResult() }) { Text("完成") } },
-            )
+            ) {
+                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    Text(result, style = MiuixTheme.textStyles.footnote1)
+                }
+                Spacer(Modifier.height(20.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    TextButton(
+                        text = "完成",
+                        onClick = { vm.dismissExecResult() },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun UpdateStatusDialog(title: String, text: String, confirm: String?, onDismiss: () -> Unit) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+    OverlayDialog(
+        show = true,
+        title = title,
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(text) },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(confirm ?: "关闭") }
-        },
-    )
+    ) {
+        Text(text)
+        Spacer(Modifier.height(20.dp))
+        Row(Modifier.fillMaxWidth()) {
+            TextButton(
+                text = confirm ?: "关闭",
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
 }
 
 @Composable
@@ -808,9 +860,9 @@ private fun StatusRow(label: String, ok: Boolean, action: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.weight(1f))
         if (ok) {
-            Text("已启用", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
+            Text("已启用", color = MiuixTheme.colorScheme.primary, style = MiuixTheme.textStyles.footnote1)
         } else {
-            TextButton(onClick = action) { Text("去开启") }
+            TextButton(text = "去开启", onClick = action)
         }
     }
 }
@@ -820,21 +872,21 @@ private fun AdvancedRow(label: String, desc: String, ok: Boolean, actionLabel: S
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MaterialTheme.typography.bodyMedium)
+                Text(label, style = MiuixTheme.textStyles.body2)
                 Spacer(Modifier.width(6.dp))
                 Text(
                     when (ok) {
                         true -> "可用"
                         false -> "不可用"
                     },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = if (ok) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.outline,
                 )
             }
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            Text(desc, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.outline)
         }
         if (actionLabel != null) {
-            TextButton(onClick = onAction) { Text(actionLabel) }
+            TextButton(text = actionLabel, onClick = onAction)
         }
     }
 }
