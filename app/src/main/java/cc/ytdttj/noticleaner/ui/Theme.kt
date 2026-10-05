@@ -10,10 +10,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import cc.ytdttj.noticleaner.ServiceLocator
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeController
 
 // dev 分支 UI 改造：
 // - 阶段一：Material You 动态取色 + 统一大圆角 Shapes（Material 3 Expressive 基础升级）
@@ -69,11 +73,17 @@ fun AppTheme(content: @Composable () -> Unit) {
         dynamicLightColorScheme(context)
     }
     MaterialTheme(colorScheme = colorScheme, shapes = AppShapes) {
-        CompositionLocalProvider(
-            LocalGlassMode provides (UiTheme.from(saved) == UiTheme.GLASS),
-            LocalGlassStyle provides GlassStyle.from(glassStyleName),
-        ) {
-            content()
+        // 迁移期双主题：MiuixTheme 供已迁移的屏使用，MaterialTheme 供未迁移的屏使用。
+        // 全部屏迁完并删除 material3 依赖后，本层 MaterialTheme 一并移除。
+        // MonetSystem 让 miuix 自读系统调色板（Android 12+ 可用），与上面的动态取色是同一份来源。
+        val miuixController = remember { ThemeController(colorSchemeMode = ColorSchemeMode.MonetSystem) }
+        MiuixTheme(controller = miuixController) {
+            CompositionLocalProvider(
+                LocalGlassMode provides (UiTheme.from(saved) == UiTheme.GLASS),
+                LocalGlassStyle provides GlassStyle.from(glassStyleName),
+            ) {
+                content()
+            }
         }
     }
 }

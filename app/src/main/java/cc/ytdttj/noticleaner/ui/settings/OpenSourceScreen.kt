@@ -2,7 +2,6 @@ package cc.ytdttj.noticleaner.ui.settings
 
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,19 +15,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import cc.ytdttj.noticleaner.ui.glass.NcCard
-import cc.ytdttj.noticleaner.ui.glass.NcScaffold
-import cc.ytdttj.noticleaner.ui.glass.NcTopAppBar
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 参考开源项目（2.0.1 Dev 17）：
@@ -68,12 +67,14 @@ private val PROJECTS = listOf(
 @Composable
 fun OpenSourceScreen(onBack: () -> Unit = {}) {
     val context = LocalContext.current
-    NcScaffold(
+    Scaffold(
         topBar = {
-            NcTopAppBar(
-                title = { Text("参考开源项目") },
+            SmallTopAppBar(
+                title = "参考开源项目",
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
                 },
             )
         },
@@ -86,49 +87,47 @@ fun OpenSourceScreen(onBack: () -> Unit = {}) {
                 Text(
                     "通知滤盒的诞生离不开以下开源项目——感谢每一位作者的付出。" +
                         "点击卡片可访问对应的 GitHub 仓库。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(8.dp))
             }
             items(PROJECTS, key = { it.name }) { p ->
-                NcCard(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clickable {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.url)))
-                            }
-                        },
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(p.url)))
+                        }
+                    },
                 ) {
                     Column(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 p.name,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MiuixTheme.textStyles.headline2,
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier.weight(1f),
                             )
                             Text(
                                 "↗",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary,
+                                style = MiuixTheme.textStyles.headline2,
+                                color = MiuixTheme.colorScheme.primary,
                             )
                         }
                         Spacer(Modifier.height(2.dp))
                         Text(
                             "作者：${p.author}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.primary,
                         )
                         Spacer(Modifier.height(4.dp))
-                        Text(p.usage, style = MaterialTheme.typography.bodySmall)
+                        Text(p.usage, style = MiuixTheme.textStyles.footnote1)
                         Spacer(Modifier.height(4.dp))
                         Text(
                             p.url.removePrefix("https://"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
                 }
@@ -138,8 +137,8 @@ fun OpenSourceScreen(onBack: () -> Unit = {}) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(
                         "以上项目排名不分先后",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }

@@ -120,15 +120,23 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
 
-    // dev 分支 UI 改造：material3 1.4.0（Material 3 Expressive + Material You 动态取色）。
-    // 注意：选 2026.06.01 而非最新 2026.09.00——后者映射 compose-ui 1.12.1，
-    // 要求 AGP 9.1+，与当前 AGP 8.13 不兼容；1.11.4 + material3 1.4.0 为兼容组合
-    implementation(platform("androidx.compose:compose-bom:2026.06.01"))
+    // ⚠️ BOM 必须 ≥ 2026.09.00：miuix 要求 CMP foundation 1.12（转发到 androidx compose 1.12.x），
+    //    BOM 的版本约束优先级高于传递依赖 ⇒ 钉在 2026.06.01（compose 1.11.4）会把 miuix 的
+    //    1.12 依赖压回 1.11 而编译失败。该 BOM 下 material3 仍是 1.4.0（未变），故升级不影响既有屏。
+    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.navigation:navigation-compose:2.9.5")
+
+    // miuix（Mishka 同源设计语言）。坐标**必须带 `-android` 后缀**：那是 KMP 库发布给
+    // AndroidX Compose 工程的变体，带源码的 AAR；不带后缀的主件会拉进 CMP 运行时并与之冲突。
+    implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-squircle-android:0.9.4")
 
     // dev 分支 UI 改造（1.4.0 Dev 4，方案 C）：Kyant0 Backdrop——液态玻璃效果
     // （backdrop 采样 + AGSL 折射着色器 + RenderEffect 模糊，minSdk 33 全量可用）。
