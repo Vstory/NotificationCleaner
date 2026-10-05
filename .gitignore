@@ -40,12 +40,10 @@ training/model_out/
 .DS_Store
 Thumbs.db
 
-# 开发计划
+# 开发计划（项目 md 唯一原件在知识库，仓库内不存开发文档）
 *.md
 # 例外：Release 正文由工作流原样发布（属流程资产，不是开发笔记）
 !.github/release-notes/*.md
-# 例外：docs/ 是随分支入库的开发记录（与根 README 的应用介绍分开）
-!docs/*.md
 
 .trae/
 .workbuddy/
