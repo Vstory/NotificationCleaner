@@ -1,6 +1,5 @@
 package io.github.vstory.hook.notifyfilter.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,6 +50,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -238,6 +238,7 @@ fun StatsDetailScreen(
                     },
                     enabled = learnedCount > 0,
                     modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                 ) { Text("开始学习", style = MiuixTheme.textStyles.button) }
             }
         }
@@ -279,7 +280,8 @@ fun StatsDetailScreen(
                 items(items, key = { it.id }) { n ->
                     // Dev 14：条目可点击 → 打开与历史页同款的详情弹层（可重新学习/取消学习）
                     Card(
-                        Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { vm.select(n) },
+                        onClick = { vm.select(n) },
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     ) {
                         Column(Modifier.padding(12.dp)) {
                             Row {
