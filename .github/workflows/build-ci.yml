@@ -41,7 +41,7 @@ permissions:
 
 # 供应链加固：第三方 action 一律钉 commit SHA（tag 会前移）。
 env:
-  JAVA_VERSION: '17'
+  JAVA_VERSION: '21'
 
 jobs:
   build:
@@ -64,9 +64,9 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
 
-      # Android SDK：项目要求 compileSdk=37 + compileSdkMinor=0 + build-tools 37.0.0，runner 镜像里没有。
-      #   ⚠️ 自 API 37 起平台包名带 minor：装出来的目录是 platforms/android-37.0，而仓库里那行
-      #   compileSdkMinor=0 正是让 AGP 按这个名字去找 —— 把它改名成 android-37 反而找不到；
+      # Android SDK：项目要求 compileSdk=37（minor 0）+ build-tools 37.0.0，runner 镜像里没有。
+      #   ⚠️ 自 API 37 起平台包名带 minor：装出来的目录是 platforms/android-37.0，而仓库里 compileSdk 的
+      #   minorApiLevel=0 正是让 AGP 按这个名字去找 —— 把它改名成 android-37 反而找不到；
       #   反过来不设 minor 时 AGP 只认 android-37（SDK 里不存在，即上游那个 hash 报错）。
       - name: Set up Android SDK 37
         run: |
@@ -83,7 +83,7 @@ jobs:
 
           # 断言：缺一即在此失败，不留到 Gradle 报含糊错
           test -f "$SDK/platforms/android-37.0/android.jar" \
-            || { echo "::error::platforms/android-37.0 未就位（AGP 侧 compileSdkMinor=0 要的就是这个名字）"
+            || { echo "::error::platforms/android-37.0 未就位（AGP 侧 minorApiLevel=0 要的就是这个名字）"
                  "$SDKM" --list 2>/dev/null | grep -i "android-37" || true; exit 1; }
           test -x "$SDK/build-tools/37.0.0/aapt2" \
             || { echo "::error::build-tools 37.0.0 就位失败"; exit 1; }

@@ -2,7 +2,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
@@ -17,11 +16,16 @@ val localProps = Properties().apply {
 val signStoreFile = localProps.getProperty("storeFile")
 val hasSigning = !signStoreFile.isNullOrBlank()
 
+@Suppress("UnstableApiUsage")
 android {
     namespace = "cc.ytdttj.noticleaner"
     // 1.2.1：libxposed service 102 要求 compileSdk ≥ 37（仅编译期，targetSdk 保持 36）
-    compileSdk = 37
-    compileSdkMinor = 0
+    // AGP 9 新 DSL：自 API 37 起平台包名带 minor，minorApiLevel=0 ⇒ AGP 去找 platforms/android-37.0
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
     // 与 CI 装的 build-tools 对齐：不钉住时 AGP 会挑自己默认的版本，runner 上不一定有
     buildToolsVersion = "37.0.0"
 
@@ -74,11 +78,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     buildFeatures {
         compose = true
@@ -102,6 +103,14 @@ android {
     }
     testOptions {
         unitTests.isIncludeAndroidResources = false
+    }
+}
+
+// AGP 9 内置 Kotlin：编译器选项从 android.kotlinOptions 迁到顶层 kotlin.compilerOptions，
+// 旧的 android.kotlinOptions{} 已不再存在（Unresolved reference）。
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
 
@@ -138,8 +147,8 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation("androidx.work:work-runtime-ktx:2.10.3")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Shizuku（用户主动启用时才请求授权）
     implementation("dev.rikka.shizuku:api:13.1.5")
@@ -151,5 +160,5 @@ dependencies {
     implementation("io.github.libxposed:service:102.0.0")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
