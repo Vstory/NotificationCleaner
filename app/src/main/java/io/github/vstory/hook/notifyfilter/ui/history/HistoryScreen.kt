@@ -328,7 +328,7 @@ private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
                     }
                     if (n.learned) {
                         Spacer(Modifier.width(4.dp))
-                        Text("已学习", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.tertiaryContainer)
+                        Text("已学习", style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.onTertiaryContainer)
                     }
                 }
                 if (n.title.isNotEmpty()) {
@@ -349,7 +349,7 @@ private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
                         style = MiuixTheme.textStyles.footnote2,
                         color = when {
                             n.adProbability >= 0.8f -> MiuixTheme.colorScheme.error
-                            n.adProbability >= 0.5f -> MiuixTheme.colorScheme.tertiaryContainer
+                            n.adProbability >= 0.5f -> MiuixTheme.colorScheme.onTertiaryContainer
                             else -> MiuixTheme.colorScheme.outline
                         },
                     )
