@@ -38,7 +38,6 @@ import io.github.vstory.hook.notifyfilter.notify.runKeepAliveCommands
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
@@ -78,13 +77,12 @@ class SettingsViewModel(
     val execBusy: StateFlow<Boolean> = _execBusy
 
     /**
-     * 模型信息：跟随 Room 学习计数实时刷新。
-     * （修复：此前在 init 一次性读取 learn_count 文件，底部导航 restoreState 保留 VM，
-     *   学完通知返回设置页仍显示旧值 0。）
+     * 已学习样本数。
+     * ⚠️ 必须走 Room flow 实时刷新：此前在 init 一次性读 learn_count 文件，底部导航
+     * restoreState 会保留 VM，学完通知返回设置页仍显示旧值 0。
      */
-    val modelInfo: StateFlow<String> = dao.learnedCount().map { n ->
-        "已学习样本：$n 条（NSPM v2 基线 + 端上学习修正）"
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "已学习样本：0 条（NSPM v2 基线 + 端上学习修正）")
+    val learnedSamples: StateFlow<Int> =
+        dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     init {
         refreshKeepAlive()
@@ -247,6 +245,7 @@ fun SettingsScreen(
     onOpenStats: (String) -> Unit,
     onOpenOpenSource: () -> Unit = {},
     onOpenAdvanced: () -> Unit = {},
+    onOpenAiModel: () -> Unit = {},
     vm: SettingsViewModel = viewModel(factory = settingsVmFactory()),
 ) {
     val threshold by vm.threshold.collectAsState()
@@ -256,14 +255,12 @@ fun SettingsScreen(
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
     val lspServiceState by vm.lspServiceState.collectAsState()
-    val modelInfo by vm.modelInfo.collectAsState()
+    val learnedSamples by vm.learnedSamples.collectAsState()
     val execResult by vm.execResult.collectAsState()
     val historyRetentionDays by vm.historyRetentionDays.collectAsState()
     var thresholdDraft by remember(threshold) { mutableStateOf(threshold) }
     var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
-
-    var confirmResetModel by remember { mutableStateOf(false) }
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
     val context = LocalContext.current
@@ -271,9 +268,7 @@ fun SettingsScreen(
     LaunchedEffect(excludeRecents) {
         if (prevExclude != null && prevExclude != excludeRecents) {
             (context as? io.github.vstory.hook.notifyfilter.ui.MainActivity)?.let { act ->
-                if (!act.applyExcludeFromRecents(excludeRecents)) {
-                    vm.showToast("仅支持 Android 10 及以上系统")
-                }
+                act.applyExcludeFromRecents(excludeRecents)
             }
         }
         prevExclude = excludeRecents
@@ -304,13 +299,12 @@ fun SettingsScreen(
                 checked = intercept,
                 onCheckedChange = { vm.setInterceptMode(it) },
                 title = "拦截模式",
-                summary = "关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）",
+                summary = "关闭后仅标记不拦截，便于观察误杀",
             )
             SliderPreference(
                 value = thresholdDraft,
                 onValueChange = { thresholdDraft = it },
                 title = "过滤阈值",
-                summary = "AI 判定广告概率 ≥ 阈值时自动清除（默认 0.8）",
                 valueText = "%.2f".format(thresholdDraft),
                 valueRange = 0.5f..1.0f,
                 steps = 9,
@@ -322,8 +316,8 @@ fun SettingsScreen(
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             ArrowPreference(
                 title = "AI 模型",
-                summary = "$modelInfo；点击重置为预训练基线",
-                onClick = { confirmResetModel = true },
+                summary = "已学习 $learnedSamples 条样本",
+                onClick = onOpenAiModel,
             )
         }
 
@@ -331,19 +325,19 @@ fun SettingsScreen(
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             ArrowPreference(
                 title = "通知监听权限",
-                summary = if (keepAlive.listenerEnabled) "已启用" else "未启用，点击前往授权",
+                summary = if (keepAlive.listenerEnabled) "已授权" else "未授权，点击前往授权",
                 onClick = { vm.openListenerSettings() },
             )
             ArrowPreference(
                 title = "电池优化白名单",
-                summary = if (keepAlive.ignoringBattery) "已启用" else "未启用，点击前往设置",
+                summary = if (keepAlive.ignoringBattery) "已加入白名单" else "未加入，点击前往设置",
                 onClick = { vm.requestIgnoreBattery() },
             )
             SwitchPreference(
                 checked = excludeRecents,
                 onCheckedChange = { vm.setExcludeFromRecents(it) },
                 title = "在多任务界面隐藏",
-                summary = "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
+                summary = "从最近任务列表隐藏本应用卡片",
             )
         }
 
@@ -362,7 +356,7 @@ fun SettingsScreen(
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             ArrowPreference(
                 title = "高级权限",
-                summary = "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
+                summary = "后台保活通道与故障修复",
                 onClick = onOpenAdvanced,
             )
         }
@@ -382,7 +376,7 @@ fun SettingsScreen(
                 summary = when {
                     diagExporting -> "导出中…"
                     diagMsg != null -> diagMsg
-                    else -> "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时"
+                    else -> "导出各模块最近 24 小时日志（ZIP）"
                 },
                 enabled = !diagExporting,
                 onClick = {
@@ -417,7 +411,7 @@ fun SettingsScreen(
                 summary = when {
                     csvExporting -> "导出中…"
                     csvMsg != null -> csvMsg
-                    else -> "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享"
+                    else -> "导出全部历史通知记录（CSV）"
                 },
                 enabled = !csvExporting,
                 onClick = {
@@ -451,8 +445,7 @@ fun SettingsScreen(
                 value = retentionDraft.toFloat(),
                 onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
                 title = "历史保留天数",
-                summary = "未学习的历史通知只保留设定天数，最新通知不断把最老的顶掉（监控式循环保存）；" +
-                    "已学习的标注不受影响",
+                summary = "仅对未学习通知生效，已学习的不受影响",
                 valueText = "$retentionDraft 天",
                 valueRange = 1f..30f,
                 steps = 28,
@@ -475,7 +468,7 @@ fun SettingsScreen(
             )
             ArrowPreference(
                 title = "参考开源项目",
-                summary = "本项目的借鉴、参考与依赖来源",
+                summary = "依赖与参考的开源项目",
                 onClick = { onOpenOpenSource() },
             )
         }
@@ -555,30 +548,6 @@ fun SettingsScreen(
                 }
             }
             io.github.vstory.hook.notifyfilter.update.UpdateState.Idle -> Unit
-        }
-
-        // ---- 重置模型二次确认 ----
-        if (confirmResetModel) {
-            OverlayDialog(
-                show = true,
-                title = "确认重置模型？",
-                onDismissRequest = { confirmResetModel = false },
-            ) {
-                Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。")
-                Spacer(Modifier.height(20.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(
-                        text = "取消",
-                        onClick = { confirmResetModel = false },
-                        modifier = Modifier.weight(1f),
-                    )
-                    Button(
-                        onClick = { vm.resetModel(); confirmResetModel = false },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) { Text("确认重置", style = MiuixTheme.textStyles.button) }
-                }
-            }
         }
 
         // ---- 高级保活执行结果弹窗 ----

@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -22,6 +24,8 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
@@ -29,7 +33,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 高级权限子页：Shizuku / Root / LSPosed / 无障碍 保活通道与通知监听修复。
- * 状态并入 summary，动作词置于 endActions；通道不可用时仍可点击以给出具体提示。
+ * 状态并入 summary，动作词置于 endActions；通道不可用时整行 enabled=false 转灰
+ * （官方示例第二个 BasicComponent 的用法），而不是留一个按了没反应的按钮。
  */
 @Composable
 fun AdvancedPermissionScreen(
@@ -38,8 +43,17 @@ fun AdvancedPermissionScreen(
 ) {
     val keepAlive by vm.keepAlive.collectAsState()
     val lspServiceState by vm.lspServiceState.collectAsState()
+    val toast by vm.toast.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
     val scopeMissing = lspServiceState.bound &&
         !lspServiceState.hasScope(LspServiceDetector.SCOPE_SYSTEM_SERVER)
+
+    LaunchedEffect(toast) {
+        toast?.let {
+            snackbar.showSnackbar(it)
+            vm.clearToast()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -52,6 +66,7 @@ fun AdvancedPermissionScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(
             Modifier
@@ -63,7 +78,7 @@ fun AdvancedPermissionScreen(
 
             Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                 Text(
-                    "以下通道用于提升后台存活率，任一可用即可，无需全部开启。",
+                    "任一通道可用即可，无需全部开启。",
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -74,11 +89,7 @@ fun AdvancedPermissionScreen(
             Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                 BasicComponent(
                     title = "Shizuku 保活",
-                    summary = if (keepAlive.shizukuAvailable) {
-                        "已授权 · 免 Root 写入白名单与监听权限"
-                    } else {
-                        "未检测到 Shizuku 服务"
-                    },
+                    summary = if (keepAlive.shizukuAvailable) "已授权" else "未检测到 Shizuku 服务",
                     endActions = {
                         Text(
                             if (keepAlive.shizukuAvailable) "应用" else "授权",
@@ -92,11 +103,7 @@ fun AdvancedPermissionScreen(
                 )
                 BasicComponent(
                     title = "Root 保活",
-                    summary = if (keepAlive.rootAvailable) {
-                        "已检测到 Root · 执行白名单与厂商自启动命令"
-                    } else {
-                        "未检测到 Root（su）"
-                    },
+                    summary = if (keepAlive.rootAvailable) "已检测到 Root" else "未检测到 Root",
                     endActions = {
                         Text(
                             "应用",
@@ -104,17 +111,12 @@ fun AdvancedPermissionScreen(
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         )
                     },
-                    onClick = {
-                        if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）")
-                    },
+                    enabled = keepAlive.rootAvailable,
+                    onClick = { vm.applyRoot() },
                 )
                 BasicComponent(
                     title = "LSPosed 保活",
-                    summary = if (keepAlive.lspDetected == true) {
-                        "已激活 · 作用域含系统(android)"
-                    } else {
-                        "未检测到激活证据，以 LSPosed 管理器为准"
-                    },
+                    summary = if (keepAlive.lspDetected == true) "已激活" else "未激活，请在 LSPosed 中启用本模块",
                     endActions = {
                         if (scopeMissing) {
                             Text(
@@ -124,18 +126,12 @@ fun AdvancedPermissionScreen(
                             )
                         }
                     },
-                    onClick = {
-                        if (lspServiceState.bound) vm.requestKeepAliveScope()
-                        else vm.showToast("请先在 LSPosed 中启用本模块")
-                    },
+                    enabled = lspServiceState.bound,
+                    onClick = { vm.requestKeepAliveScope() },
                 )
                 BasicComponent(
                     title = "无障碍保活",
-                    summary = if (keepAlive.accessibilityEnabled) {
-                        "已开启 · 系统绑定的第二条生命线，不读取屏幕内容"
-                    } else {
-                        "未开启「保活守护」服务"
-                    },
+                    summary = if (keepAlive.accessibilityEnabled) "已开启，不读取屏幕内容" else "未开启",
                     endActions = {
                         if (!keepAlive.accessibilityEnabled) {
                             Text(
@@ -153,7 +149,7 @@ fun AdvancedPermissionScreen(
             Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                 BasicComponent(
                     title = "修复通知监听",
-                    summary = "监听断连且无法自愈时强制修复，需 Shizuku 或 Root",
+                    summary = "强制重建通知监听连接",
                     endActions = {
                         Text(
                             "修复",
