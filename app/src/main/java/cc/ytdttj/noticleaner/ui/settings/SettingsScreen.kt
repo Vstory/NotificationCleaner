@@ -68,17 +68,6 @@ class SettingsViewModel(
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    // ---- 超级岛（island 分支功能；Dev 5 重构：LSPosed only）----
-    val islandEnabled = settings.islandEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    val islandPackages = settings.islandPackages.stateIn(viewModelScope, SharingStarted.Eagerly, cc.ytdttj.noticleaner.notify.island.IslandNotifier.DEFAULT_PACKAGES)
-
-    /** 岛探测状态（实时刷新：保活动作完成后自动重新探测） */
-    private val _islandProbe = MutableStateFlow("探测系统支持中…")
-    val islandProbe: StateFlow<String> = _islandProbe
-
-    /** 通知模拟解锁（设置 tab 快速点击 5 次，1.3.0 beta2） */
-    val simUnlocked = settings.simUnlocked.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
     // ---- 界面风格（1.4.0 Dev 4）：Material 3 / 液态玻璃 ----
     val uiTheme = settings.uiTheme.stateIn(viewModelScope, SharingStarted.Eagerly, cc.ytdttj.noticleaner.ui.UiTheme.MATERIAL.name)
 
@@ -117,7 +106,7 @@ class SettingsViewModel(
 
     init {
         refreshKeepAlive()
-        // Dev 7：LSPosed 框架服务绑定/作用域变化（含授权框批准后）自动刷新保活与岛探测
+        // Dev 7：LSPosed 框架服务绑定/作用域变化（含授权框批准后）自动刷新保活状态
         viewModelScope.launch {
             cc.ytdttj.noticleaner.keepalive.LspServiceDetector.state.collect {
                 refreshKeepAlive()
@@ -132,57 +121,6 @@ class SettingsViewModel(
                     rikka.shizuku.Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
             }.getOrDefault(false)
             _keepAlive.value = ServiceLocator.keepAlive.status(shizukuOk)
-            // 保活状态变化后同步刷新岛探测（Shizuku 授权/白名单状态实时反映，1.3.0 beta2）
-            probeIsland()
-        }
-    }
-
-    /** 探测超级岛支持情况（OS 版本 + 白名单 hook 状态 + Shizuku），结果写入 islandProbe */
-    fun probeIsland() {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val ctx = ServiceLocator.appContext
-            val protocol = runCatching {
-                android.provider.Settings.System.getInt(ctx.contentResolver, "notification_focus_protocol", 0)
-            }.getOrDefault(0)
-            val shizukuOk = runCatching {
-                rikka.shizuku.Shizuku.pingBinder() &&
-                    rikka.shizuku.Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
-            }.getOrDefault(false)
-            // 本地白名单状态：LSPosed hook 生效后为 true（官方 Q&A 的 canShowFocus 查询）
-            val canFocus = runCatching {
-                val extras = android.os.Bundle().apply { putString("package", ctx.packageName) }
-                ctx.contentResolver.call(
-                    android.net.Uri.parse("content://miui.statusbar.notification.public"),
-                    "canShowFocus", null, extras,
-                )?.getBoolean("canShowFocus", false)
-            }.getOrNull()
-            val lsp = ServiceLocator.keepAlive.isLspActive()
-            val lspService = cc.ytdttj.noticleaner.keepalive.LspServiceDetector.state.value
-            val islandScopeReady = lspService.bound && lspService.hasAllScope(
-                setOf(
-                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_UI,
-                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_XMSF,
-                ),
-            )
-            val osLine = when {
-                protocol >= 3 -> "系统：HyperOS 3 超级岛"
-                protocol == 2 -> "系统：焦点通知（OS2），无岛形态"
-                else -> "系统：不支持焦点通知/超级岛"
-            }
-            val hookLine = when (canFocus) {
-                true -> "白名单：已放行（hook 生效）"
-                false -> "白名单：未放行（LSPosed 未激活或未勾选系统界面作用域）"
-                null -> "白名单：无法查询"
-            }
-            val lspLine = when {
-                lspService.bound && islandScopeReady -> "LSPosed：模块已激活（岛作用域已就绪）"
-                lspService.bound -> "LSPosed：模块已激活（岛作用域未授权，打开岛开关可授权）"
-                lsp == true -> "LSPosed：模块已激活（system_server 心跳）"
-                // Dev 5：检测不到证据 ≠ 未激活（原实现误报），如实显示"无法自动检测"
-                else -> "LSPosed：无法自动检测（以 LSPosed 管理器为准）"
-            }
-            val shizukuLine = if (shizukuOk) "Shizuku：已授权" else "Shizuku：未授权"
-            _islandProbe.value = listOf(osLine, hookLine, lspLine, shizukuLine).joinToString("\n")
         }
     }
 
@@ -196,36 +134,6 @@ class SettingsViewModel(
 
     fun setExcludeFromRecents(v: Boolean) {
         viewModelScope.launch { settings.setExcludeFromRecents(v) }
-    }
-
-    // ---- 超级岛（island 分支功能）----
-
-    fun setIslandEnabled(v: Boolean) {
-        val was = islandEnabled.value
-        viewModelScope.launch { settings.setIslandEnabled(v) }
-        // Dev 7：首次打开岛开关 → 弹 LSPosed 授权框，请求岛作用域（系统界面 + 小米服务框架）
-        if (v && !was) {
-            cc.ytdttj.noticleaner.keepalive.LspServiceDetector.requestScope(
-                listOf(
-                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_UI,
-                    cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_XMSF,
-                ),
-            ) { result ->
-                _toast.value = result.fold(
-                    onSuccess = { scope ->
-                        val ok = scope.containsAll(
-                            listOf(
-                                cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_UI,
-                                cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_XMSF,
-                            ),
-                        )
-                        if (ok) "岛作用域已授权：请到 高级功能 点击「重启岛作用域」让 hook 立即生效"
-                        else "岛作用域部分授权，可在 LSPosed 管理器补齐后重启作用域"
-                    },
-                    onFailure = { "岛作用域授权失败：${it.message}（也可在 LSPosed 管理器手动勾选）" },
-                )
-            }
-        }
     }
 
     // ---- LSPosed 框架服务状态（Dev 7：libxposed service 绑定 + 作用域）----
@@ -248,93 +156,6 @@ class SettingsViewModel(
 
     fun setHistoryRetentionDays(v: Int) {
         viewModelScope.launch { settings.setHistoryRetentionDays(v) }
-    }
-
-    fun toggleIslandPackage(pkg: String) {
-        viewModelScope.launch {
-            val current = islandPackages.value
-            val next = if (pkg in current) current - pkg else current + pkg
-            settings.setIslandPackages(next)
-        }
-    }
-
-    /** 发送测试岛通知（走完整 LSPosed 链路） */
-    fun sendTestIsland() {
-        cc.ytdttj.noticleaner.notify.island.IslandNotifier.sendTest(ServiceLocator.appContext) { msg ->
-            _toast.value = msg
-        }
-    }
-
-    // ---- 通知模拟（island 测试）：Shell 身份发通知，tag 携带模拟包名 ----
-
-    private val _simulateBusy = MutableStateFlow(false)
-    val simulateBusy: StateFlow<Boolean> = _simulateBusy
-
-    fun simulateNotification(pkg: String, title: String, content: String) {
-        if (_simulateBusy.value) return
-        if (title.isBlank() && content.isBlank()) {
-            _toast.value = "标题和内容不能同时为空"
-            return
-        }
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            _simulateBusy.value = true
-            val island = cc.ytdttj.noticleaner.notify.island.IslandNotifier
-            val trace = cc.ytdttj.noticleaner.notify.island.IslandTrace
-            val cmd = buildString {
-                append("cmd notification post")
-                if (title.isNotBlank()) append(" -t ").append(shellQuote(title))
-                append(" ").append(shellQuote(island.SIM_TAG_PREFIX + pkg))
-                if (content.isNotBlank()) append(" ").append(shellQuote(content))
-            }
-            trace.log("模拟发送开始: 来源=${island.PACKAGE_LABELS[pkg] ?: pkg} cmd=$cmd")
-            val label = island.PACKAGE_LABELS[pkg] ?: pkg
-
-            // 通道1：Shizuku（cmd post 成功也输出 "posting for user 0: ..."，不能以空判成败）
-            val shizukuOut = runCatching { ShizukuExecutor.exec(cmd) }.getOrElse { "通道异常: $it" }
-            var ok = isCmdOutputOk(shizukuOut)
-            var via = "Shizuku"
-            var out = shizukuOut
-            trace.log("Shizuku 通道: ok=$ok 输出=${shizukuOut.take(200)}")
-
-            // 通道2：Root 回退
-            if (!ok) {
-                val rootOut = runCatching { RootExecutor.exec(cmd) }.getOrElse { "通道异常: $it" }
-                ok = isCmdOutputOk(rootOut)
-                via = "Root"
-                out = rootOut
-                trace.log("Root 回退通道: ok=$ok 输出=${rootOut.take(200)}")
-            }
-
-            _simulateBusy.value = false
-            _toast.value = if (ok) "模拟通知已发送（来源模拟为 $label，经 $via）" else "发送失败（$via）: ${out.take(120)}"
-        }
-    }
-
-    /** cmd notification post 成功时输出 "posting for user 0: ..."（非空）；失败含 Exception/Error */
-    private fun isCmdOutputOk(out: String): Boolean {
-        val o = out.trim()
-        if (o.isEmpty()) return true
-        if (o.startsWith("通道异常")) return false
-        return !o.contains("Exception", ignoreCase = true) && !o.contains("Error", ignoreCase = true)
-    }
-
-    private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
-
-    /** 管线直接注入（主模拟路径，绕开 shell 通知不投递给监听器的限制） */
-    fun simulateDirect(pkg: String, title: String, content: String) {
-        if (_simulateBusy.value) return
-        if (title.isBlank() && content.isBlank()) {
-            _toast.value = "标题和内容不能同时为空"
-            return
-        }
-        _simulateBusy.value = true
-        _toast.value = "5 秒后发送，请立刻回到桌面（App 在前台时系统不渲染岛）"
-        cc.ytdttj.noticleaner.notify.island.IslandNotifier.postSimulated(
-            ServiceLocator.appContext, pkg, title, content,
-        ) { msg ->
-            _simulateBusy.value = false
-            _toast.value = msg
-        }
     }
 
     fun requestIgnoreBattery() {
@@ -426,34 +247,6 @@ class SettingsViewModel(
         }
     }
 
-    /**
-     * 重启岛作用域进程（Dev 5，Root；命令参考 ref/HyperIsland RestartScopeDialog）：
-     * - SystemUI：killall（persistent 进程对 force-stop 不响应），死后由 zygote 自动拉起；
-     * - 小米服务框架：am force-stop，被小米推送自行重新拉起。
-     * LSPosed hook 修改作用域/更新模块后，重启对应进程即可让 hook 生效，无需整机重启。
-     */
-    fun restartIslandScope() {
-        if (_execBusy.value) return
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            _execBusy.value = true
-            val commands = listOf(
-                "killall com.android.systemui",
-                "am force-stop com.xiaomi.xmsf",
-            )
-            _execResult.value = buildString {
-                for (cmd in commands) {
-                    val out = runCatching { RootExecutor.exec(cmd) }.getOrElse { "执行失败: $it" }
-                    append("$ ").appendLine(cmd)
-                    append(if (out.isBlank()) "(无输出)" else out).appendLine().appendLine()
-                }
-                appendLine("两条命令执行完毕。SystemUI 与小米服务框架正在自动重启，")
-                append("约 10–20 秒后锁屏/岛恢复即可测试上岛。")
-            }.trim()
-            _execBusy.value = false
-            refreshKeepAlive()
-        }
-    }
-
     fun dismissExecResult() {
         _execResult.value = null
     }
@@ -484,10 +277,8 @@ fun SettingsScreen(
     val execResult by vm.execResult.collectAsState()
     val execBusy by vm.execBusy.collectAsState()
     var thresholdInput by remember(threshold) { mutableStateOf("%.2f".format(threshold)) }
-    val simUnlocked by vm.simUnlocked.collectAsState()
     val uiThemeMode by vm.uiTheme.collectAsState()
     val glassStyleMode by vm.glassStyle.collectAsState()
-    val islandProbe by vm.islandProbe.collectAsState()
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
@@ -706,16 +497,6 @@ fun SettingsScreen(
                         },
                     )
                     AdvancedRow(
-                        label = "重启岛作用域",
-                        desc = "以 Root 重启 系统界面 + 小米服务框架：更新模块或修改 LSPosed 作用域后让岛 hook 立即生效，无需整机重启",
-                        ok = keepAlive.rootAvailable,
-                        actionLabel = if (keepAlive.rootAvailable) "重启" else null,
-                        onAction = {
-                            if (keepAlive.rootAvailable) vm.restartIslandScope()
-                            else vm.showToast("重启作用域需要 Root（su）")
-                        },
-                    )
-                    AdvancedRow(
                         label = "无障碍保活",
                         desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
                         ok = keepAlive.accessibilityEnabled,
@@ -757,7 +538,7 @@ fun SettingsScreen(
             }
         }
         // ---- 导出诊断日志（1.3.2 恢复：1.3.0 设置页重排时丢失）----
-        // 内容 = 版本/权限/岛设置快照 + 岛链路 trace + logcat，经系统分享
+        // 内容 = 版本/权限设置快照 + logcat，经系统分享
         val diagContext = LocalContext.current
         val diagScope = rememberCoroutineScope()
         var diagExporting by remember { mutableStateOf(false) }
@@ -905,161 +686,6 @@ fun SettingsScreen(
                     Text(if (advancedOpen) "收起" else "展开", style = MaterialTheme.typography.bodySmall)
                 }
                 if (advancedOpen) {
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-        // ---- 超级岛支付提醒（island 分支实验功能；Dev 5 重构：LSPosed only） ----
-        val islandEnabled by vm.islandEnabled.collectAsState()
-        val islandPackages by vm.islandPackages.collectAsState()
-        var showDiag by remember { mutableStateOf(false) }
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("超级岛支付提醒（实验）", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "银行/支付类 App 的收支通知自动上岛：摘要态显示来源图标与金额，展开显示详情。" +
-                        "认证放行依赖 LSPosed 模块（需在 LSPosed 中启用本模块并勾选" +
-                        "系统界面 + 小米服务框架作用域），失败自动退化为普通通知。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(islandProbe, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                    }
-                    Switch(checked = islandEnabled, onCheckedChange = { vm.setIslandEnabled(it) })
-                }
-                Text("上岛应用（勾选后，该应用含金额的收支通知才会上岛）", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                cc.ytdttj.noticleaner.notify.island.IslandNotifier.PACKAGE_LABELS.forEach { (pkg, label) ->
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 36.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        androidx.compose.material3.Checkbox(
-                            checked = pkg in islandPackages,
-                            onCheckedChange = { vm.toggleIslandPackage(pkg) },
-                        )
-                        Text(label, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row {
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(enabled = islandEnabled, onClick = { vm.sendTestIsland() }) {
-                        Text("发送测试岛")
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(onClick = { showDiag = true }) { Text("诊断日志") }
-                }
-                if (showDiag) {
-                    cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
-                        onDismissRequest = { showDiag = false },
-                        title = { Text("岛链路诊断") },
-                        text = {
-                            Column(
-                                Modifier
-                                    .heightIn(max = 420.dp)
-                                    .verticalScroll(rememberScrollState()),
-                            ) {
-                                Text(
-                                    cc.ytdttj.noticleaner.notify.island.IslandTrace.dump(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                cc.ytdttj.noticleaner.notify.island.IslandTrace.clear()
-                                showDiag = false
-                            }) { Text("清空") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDiag = false }) { Text("关闭") }
-                        },
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-        // ---- 通知模拟（island 测试：Shell 身份发通知进完整管线）----
-        // 仅解锁后显示：设置 tab 3 秒内连点 5 次 → 解锁弹窗（MainActivity），解锁状态持久化于 DataStore
-        if (simUnlocked) {
-        val simulateBusy by vm.simulateBusy.collectAsState()
-        var simPkg by remember { mutableStateOf("cmb.pb") }
-        var simTitle by remember { mutableStateOf("") }
-        var simContent by remember { mutableStateOf("") }
-        var simMenu by remember { mutableStateOf(false) }
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("通知模拟（测试）", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "以 Shell 身份发送一条通知进入完整过滤管线（AI 评分 → 决策 → 入库 → 上岛），岛展示按所选应用处理。" +
-                        "系统限制：通知栏那条通知的来源固定显示 Shell，无法伪造他人包名。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.foundation.layout.Box {
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(onClick = { simMenu = true }) {
-                        Text(
-                            "模拟来源：" +
-                                (cc.ytdttj.noticleaner.notify.island.IslandNotifier.PACKAGE_LABELS[simPkg] ?: simPkg),
-                        )
-                    }
-                    androidx.compose.material3.DropdownMenu(
-                        expanded = simMenu,
-                        onDismissRequest = { simMenu = false },
-                    ) {
-                        cc.ytdttj.noticleaner.notify.island.IslandNotifier.PACKAGE_LABELS.forEach { (p, l) ->
-                            androidx.compose.material3.DropdownMenuItem(
-                                text = { Text(l) },
-                                onClick = { simPkg = p; simMenu = false },
-                            )
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                cc.ytdttj.noticleaner.ui.glass.NcOutlinedTextField(
-                    value = simTitle,
-                    onValueChange = { simTitle = it },
-                    label = { Text("通知标题") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-                cc.ytdttj.noticleaner.ui.glass.NcOutlinedTextField(
-                    value = simContent,
-                    onValueChange = { simContent = it },
-                    label = { Text("通知内容（含金额即可上岛，如：您消费 ¥25.00）") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-                Row {
-                    androidx.compose.material3.Button(
-                        enabled = !simulateBusy,
-                        onClick = { vm.simulateDirect(simPkg, simTitle, simContent) },
-                    ) { Text(if (simulateBusy) "发送中…" else "注入管线（推荐）") }
-                    Spacer(Modifier.width(8.dp))
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(
-                        enabled = !simulateBusy,
-                        onClick = { vm.simulateNotification(simPkg, simTitle, simContent) },
-                    ) { Text("Shell 通知方式") }
-                }
-                Text(
-                    "注入管线 = 跳过系统通知直接测试上岛链路（推荐）。点击后 5 秒才发送——请立刻回到桌面：" +
-                        "HyperOS 前台抑制，App 自己在前台时不渲染岛，展开态也只对后台到达的通知生效。Shell 通知方式仅验证通知栏投递。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray,
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        } // if (simUnlocked)
-
                     Spacer(Modifier.height(12.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(12.dp))

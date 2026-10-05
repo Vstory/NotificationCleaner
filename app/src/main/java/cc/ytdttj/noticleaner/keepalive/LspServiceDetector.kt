@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * LSPosed 框架服务检测（Dev 7，机制借鉴 ref/HyperIsland XposedPrefsSyncApp）：
+ * LSPosed 框架服务检测（Dev 7）：
  *
  * App 进程经 XposedServiceHelper 注册后，LSPosed 框架会向【已启用】的模块 App
  * 绑定服务（与作用域无关）——绑定本身即"模块已激活"的标准证据；
@@ -29,9 +29,6 @@ object LspServiceDetector {
         fun hasAllScope(pkgs: Collection<String>): Boolean = pkgs.all { it in scope }
     }
 
-    /** 岛链路作用域目标 */
-    const val SCOPE_SYSTEM_UI = "com.android.systemui"
-    const val SCOPE_XMSF = "com.xiaomi.xmsf"
     /** 保活 hook 作用域目标（system_server） */
     const val SCOPE_SYSTEM_SERVER = "android"
 

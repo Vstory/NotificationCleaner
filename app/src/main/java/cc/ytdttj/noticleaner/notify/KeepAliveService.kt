@@ -39,15 +39,7 @@ class KeepAliveService : Service() {
          * 极易超出广播 10s 预算（叠加旧的无超时 exec 更是必然超时）→ 系统按接收器超时处理，
          * 后台进程可能被整杀。现在由本常驻服务执行，广播只负责"下单"。
          */
-        private const val ACTION_REPAIR = "cc.ytdttj.noticleaner.action.REPAIR"
-
-        /**
-         * 超级岛"已完成"按钮（2.1.2）：点击岛上的按钮 → PendingIntent.getService 触发本
-         * action → 取消对应通知 → 岛随之清除。SignalDock 实证用 getService（广播型
-         * PendingIntent 在 HyperOS 的岛 action 点击链路上无反应），照搬。
-         */
-        const val ACTION_ISLAND_DISMISS = "cc.ytdttj.noticleaner.action.ISLAND_DISMISS"
-        const val EXTRA_ISLAND_NOTIF_ID = "cc.ytdttj.noticleaner.island.NOTIF_ID"
+        const val ACTION_REPAIR = "cc.ytdttj.noticleaner.action.REPAIR"
 
         fun start(context: Context) {
             runCatching {
@@ -181,20 +173,8 @@ class KeepAliveService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_REPAIR -> runRepairAsync()
-            ACTION_ISLAND_DISMISS -> handleIslandDismiss(intent)
         }
         return START_STICKY
-    }
-
-    /** 超级岛"已完成"：取消对应通知（岛随通知清除），留下点击痕迹便于诊断 */
-    private fun handleIslandDismiss(intent: Intent) {
-        val id = intent.getIntExtra(EXTRA_ISLAND_NOTIF_ID, -1)
-        if (id == -1) return
-        runCatching { getSystemService(NotificationManager::class.java).cancel(id) }
-        cc.ytdttj.noticleaner.diagnostics.RingLog.log(
-            cc.ytdttj.noticleaner.diagnostics.LogModules.ISLAND,
-            "岛通知已完成：用户点击按钮，已取消通知 (id=$id)",
-        )
     }
 
     /**

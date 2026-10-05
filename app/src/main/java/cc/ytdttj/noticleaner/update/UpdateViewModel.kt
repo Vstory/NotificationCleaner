@@ -52,13 +52,8 @@ class UpdateViewModel : ViewModel() {
         _state.value = UpdateState.Idle
     }
 
-    /** 检查更新（逻辑在 [UpdateChecker]，与后台 Worker 共用）。
-     *  island 分支：包名非正式版时短路——更新源只指正式版（island 版与正式版并存，装正式版 APK 不会升级而是多装一个） */
+    /** 检查更新（逻辑在 [UpdateChecker]，与后台 Worker 共用） */
     fun checkUpdate() {
-        if (BuildConfig.APPLICATION_ID != "cc.ytdttj.noticleaner") {
-            _state.value = UpdateState.Error("Island 版不参与应用内更新，请手动更新（跟随 main 分支版本号）")
-            return
-        }
         if (_state.value is UpdateState.Checking) return
         downloadJob?.cancel()
         _state.value = UpdateState.Checking

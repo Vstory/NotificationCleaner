@@ -33,7 +33,6 @@ import java.util.concurrent.TimeUnit
 class CleanerListenerService : NotificationListenerService() {
 
     companion object {
-        // island 分支：跟随 applicationId（island 版 = cc.ytdttj.noticleanerisland）
         val SELF_PACKAGE = cc.ytdttj.noticleaner.BuildConfig.APPLICATION_ID
 
         @Volatile
@@ -129,16 +128,6 @@ class CleanerListenerService : NotificationListenerService() {
                                     ?: refs.first().appName
                                 appNameCache.putIfAbsent(pkg, best)
                             }
-                    }
-                }
-                // island 分支：超级岛设置热路径缓存（islandplan.md §三；Dev 5 LSPosed-only）
-                appScope!!.launch {
-                    val s = ServiceLocator.settings
-                    kotlinx.coroutines.flow.combine(
-                        s.islandEnabled,
-                        s.islandPackages,
-                    ) { e, p -> e to p }.collect { (e, p) ->
-                        cc.ytdttj.noticleaner.notify.island.IslandNotifier.onSettings(e, p)
                     }
                 }
             }
@@ -247,13 +236,6 @@ class CleanerListenerService : NotificationListenerService() {
     /** 实时回调与重连补扫共用入口；fromBackfill 决定走慢速补扫通道（1.2.1） */
     private fun dispatch(sbn: StatusBarNotification, fromBackfill: Boolean) {
         if (sbn.packageName == SELF_PACKAGE) return
-        // Dev 16：排除自己通过 SystemUI 代发的岛通知（发送者=com.android.systemui，
-        // extras 带 nc_island_dispatched 标记）——不进过滤管线/通知历史，避免噪音
-        if (sbn.packageName == "com.android.systemui" &&
-            sbn.notification?.extras?.getBoolean("nc_island_dispatched") == true
-        ) {
-            return
-        }
         // 1.3.2（P3-2）：每通知一次的日志在 release 下门控，省 logd 写入与字符串分配
         if (cc.ytdttj.noticleaner.BuildConfig.DEBUG) {
             android.util.Log.i("NCWatch", "posted pkg=${sbn.packageName} connected=$listenerConnected backfill=$fromBackfill")
@@ -274,7 +256,7 @@ class CleanerListenerService : NotificationListenerService() {
         if (title.isEmpty() && text.isEmpty()) return
 
         // 1.4.0 Dev 12：环形日志全量留痕——此前 release 下 NCWatch logcat 门控，
-        // 事件无法事后归因（招行 09:31 上岛排查时 logcat/内存 trace 均已滚动丢失）
+        // 事件无法事后归因（排查时 logcat/内存 trace 均已滚动丢失）
         cc.ytdttj.noticleaner.diagnostics.RingLog.log(
             cc.ytdttj.noticleaner.diagnostics.LogModules.PIPE,
             // Dev 12：补正文片段——只有标题无法判断"这条为什么被判广告"，
@@ -315,8 +297,7 @@ class CleanerListenerService : NotificationListenerService() {
         val dao: NotificationDao = locator.db.notificationDao()
         val modelRepo: ModelRepository = locator.modelRepo
 
-        // 模拟来源解析（island 分支测试）：Shell 通知 tag island:<pkg> → 按模拟包名入库/打分/上岛
-        val pkg = cc.ytdttj.noticleaner.notify.island.IslandNotifier.effectivePackage(sbn)
+        val pkg = sbn.packageName
         // 1.3.2（P0-5）：应用名解析移出决策路径——缓存命中直接用；未命中先用包名占位
         //（putIfAbsent 保证单飞），异步解析后回填缓存与历史行，不占用实时槽做 IPC
         val appName = appNameCache[pkg] ?: run {
@@ -403,14 +384,6 @@ class CleanerListenerService : NotificationListenerService() {
         )
 
         if (decision == DECISION_FILTERED_BY_AI || decision == DECISION_FILTERED_BY_RULE) {
-            // 1.3.2 诊断补盲：岛白名单相关包的通知被拦截时留痕（排查"扣款通知未上岛"——
-            // 此前该路径无任何 trace，无法区分"被拦截"与"岛链路故障"）
-            val island = cc.ytdttj.noticleaner.notify.island.IslandNotifier
-            if (island.isIslandRelevant(sbn)) {
-                cc.ytdttj.noticleaner.notify.island.IslandTrace.log(
-                    "✗ 通知被拦截($decision)不上岛: ${title.take(24)}",
-                )
-            }
             // 清除失败（时机过早等）也记入待取消队列，重连时补撤（1.1.11 兜底）
             val ok = runCatching { cancelNotification(sbn.key) }.isSuccess
             if (!ok) {
@@ -422,17 +395,6 @@ class CleanerListenerService : NotificationListenerService() {
                 pendingCancels.add(sbn.key)
             } else {
                 android.util.Log.i("NCWatch", "filtered+$decision p=$probability")
-            }
-        } else {
-            // island 分支：放行通知的支付信息上岛（islandplan.md §三；内部全静默降级）
-            val island = cc.ytdttj.noticleaner.notify.island.IslandNotifier
-            if (island.isIslandRelevant(sbn)) {
-                cc.ytdttj.noticleaner.notify.island.IslandTrace.log(
-                    "管线放行 decision=$decision p=$probability pkg=${island.effectivePackage(sbn)}",
-                )
-            }
-            runCatching {
-                island.maybePost(applicationContext, sbn, title, content)
             }
         }
 

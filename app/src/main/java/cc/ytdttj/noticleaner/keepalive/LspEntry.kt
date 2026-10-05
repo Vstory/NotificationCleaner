@@ -27,29 +27,6 @@ class LspEntry : XposedModule() {
         log(Log.INFO, TAG, "module loaded in ${param.processName} (isSystemServer=${param.isSystemServer()})")
     }
 
-    /**
-     * island 分支：SystemUI 进程加载时挂焦点通知白名单解锁（islandv2plan P3-2）。
-     * 仅当 LSPosed 作用域含 com.android.systemui 时回调。
-     */
-    override fun onPackageLoaded(param: XposedModuleInterface.PackageLoadedParam) {
-        when (param.packageName) {
-            // island 分支：SystemUI 焦点通知白名单解锁
-            "com.android.systemui" -> {
-                runCatching { IslandUnlockFocusHook(this).onPackageLoaded(param) }
-                    .onFailure { log(Log.WARN, TAG, "island focus hook init failed: $it") }
-                // Dev 16：岛代发——SystemUI 进程内接收 App 广播，以 systemui 身份
-                // notify 岛通知（三道认证门槛天然全免，方案 B 信任模型）
-                runCatching { SystemUIIslandDispatcher.install(this, param.defaultClassLoader) }
-                    .onFailure { log(Log.WARN, TAG, "island dispatcher init failed: $it") }
-            }
-            // island 分支：xmsf 焦点通知认证解锁（OS3 云认证 fail-closed，必须 hook）
-            "com.xiaomi.xmsf" -> {
-                runCatching { XmsfUnlockAuthHook(this).onPackageLoaded(param) }
-                    .onFailure { log(Log.WARN, TAG, "xmsf auth hook init failed: $it") }
-            }
-        }
-    }
-
     override fun onSystemServerStarting(param: SystemServerStartingParam) {
         hookActiveServices(param.classLoader)
         hookNotificationManagerService(param.classLoader)
@@ -234,7 +211,6 @@ class LspEntry : XposedModule() {
 
     companion object {
         private const val TAG = "NotiCleaner"
-        // island 分支：跟随 applicationId（island 版包名不同，LSPosed 需单独激活本模块）
         private val TARGET = cc.ytdttj.noticleaner.BuildConfig.APPLICATION_ID
         private const val AS_CLASS = "com.android.server.am.ActiveServices"
         private const val NMS_CLASS = "com.android.server.notification.NotificationManagerService"

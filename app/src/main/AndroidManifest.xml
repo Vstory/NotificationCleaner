@@ -16,16 +16,6 @@
     <!-- 1.2.3：APP 选择器需列出全部应用（含系统应用）——Android 11+ 包可见性过滤需要 -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
-    <!--
-        Dev 16 岛代发（SystemUI 进程内以 systemui 身份 notify 岛通知）：
-        - 声明 signature 权限：只有同签名（本模块自己）的包能持有，第三方无法伪造发送
-        - SystemUI 进程内的岛派发接收器在注册时要求该权限，框架层校验发送方
-    -->
-    <permission
-        android:name="cc.ytdttj.noticleaner.PERMISSION_DISPATCH_ISLAND"
-        android:protectionLevel="signature" />
-    <uses-permission android:name="cc.ytdttj.noticleaner.PERMISSION_DISPATCH_ISLAND" />
-
     <application
         android:name=".App"
         android:allowBackup="true"

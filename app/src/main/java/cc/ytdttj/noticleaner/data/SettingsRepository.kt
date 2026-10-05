@@ -6,9 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import cc.ytdttj.noticleaner.notify.island.IslandNotifier
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -29,12 +27,6 @@ class SettingsRepository(private val context: Context) {
     private val keyFilteredAi = intPreferencesKey("filtered_ai_count")
     private val keyFilteredRule = intPreferencesKey("filtered_rule_count")
     private val keyOnboardingDone = booleanPreferencesKey("onboarding_done")
-
-    // ---- 超级岛（island 分支功能，islandplan.md §四）----
-    // Dev 5 重构：删除 island_bypass_ms / island_drop_blind（iptables 盲窗方案废弃，
-    // 仅保留 LSPosed 模式）。旧 key 残留在 DataStore 中无害，不做迁移。
-    private val keyIslandEnabled = booleanPreferencesKey("island_enabled")
-    private val keyIslandPackages = stringSetPreferencesKey("island_packages")
 
     // ---- 1.2.0（ImprovePlan P2-2）：拦截计数内存累积 + 500ms 批量落盘 ----
     // 拦截风暴（一次弹 N 条广告）时不再逐条全文件读改写 DataStore。
@@ -66,34 +58,6 @@ class SettingsRepository(private val context: Context) {
 
     /** 权限初始化流程已完成（1.1.8 首次引入；默认 false → 老版本升级后也会走一遍初始化） */
     val onboardingDone: Flow<Boolean> = context.dataStore.data.map { it[keyOnboardingDone] ?: false }
-
-    // ---- 超级岛（island 分支功能）----
-
-    val islandEnabled: Flow<Boolean> = context.dataStore.data.map { it[keyIslandEnabled] ?: false }
-
-    /**
-     * 岛白名单（1.3.2 Dev 2：读取时应用废弃包名迁移——
-     * 老版本保存的勾选集合里"com.cmbchina.cmb.plainpinkage"→"cmb.pb"，
-     * 避免招行旧包名残留导致上岛静默失效）
-     */
-    val islandPackages: Flow<Set<String>> = context.dataStore.data.map { prefs ->
-        val saved = prefs[keyIslandPackages] ?: return@map IslandNotifier.DEFAULT_PACKAGES
-        saved.map { IslandNotifier.PACKAGE_MIGRATION[it] ?: it }.toSet()
-    }
-    suspend fun setIslandEnabled(value: Boolean) {
-        context.dataStore.edit { it[keyIslandEnabled] = value }
-    }
-
-    suspend fun setIslandPackages(value: Set<String>) {
-        context.dataStore.edit { it[keyIslandPackages] = value }
-    }
-
-    /** 通知模拟解锁（隐藏测试功能：设置 tab 快速点击 5 次后启用，1.3.0 beta2） */
-    private val keySimUnlocked = booleanPreferencesKey("sim_unlocked")
-    val simUnlocked: Flow<Boolean> = context.dataStore.data.map { it[keySimUnlocked] ?: false }
-    suspend fun setSimUnlocked(value: Boolean) {
-        context.dataStore.edit { it[keySimUnlocked] = value }
-    }
 
     // ---- 历史通知保留天数（Dev 6）：监控式滚动，最新的顶掉 N 天前的 ----
     private val keyHistoryRetentionDays = intPreferencesKey("history_retention_days")

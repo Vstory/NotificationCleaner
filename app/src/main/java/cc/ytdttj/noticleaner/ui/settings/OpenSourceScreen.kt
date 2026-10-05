@@ -32,8 +32,7 @@ import cc.ytdttj.noticleaner.ui.glass.NcTopAppBar
 
 /**
  * 参考开源项目（2.0.1 Dev 17）：
- * 本项目的借鉴、参考与依赖来源——岛通知协议/参数（Notice、SignalDock、HyperIsland）、
- * 认证与代发信任模型（HyperIsland）、液态玻璃（Backdrop/Shapes）、UI 风格（miuix）、
+ * 本项目的借鉴、参考与依赖来源——液态玻璃（Backdrop/Shapes）、UI 风格（miuix）、
  * 模块 API（libxposed）与免 Root 通道（Shizuku）。
  */
 private data class OpenSourceProject(
@@ -44,18 +43,6 @@ private data class OpenSourceProject(
 )
 
 private val PROJECTS = listOf(
-    OpenSourceProject(
-        "Notice", "Night-stars-1", "https://github.com/Night-stars-1/Notice",
-        "超级岛通知协议与 ML 训练管线参考（训练脚本同源）",
-    ),
-    OpenSourceProject(
-        "HyperIsland", "1812z", "https://github.com/1812z/HyperIsland",
-        "认证绕过思路与 SystemUI 进程内代发（岛代发信任模型）参考",
-    ),
-    OpenSourceProject(
-        "SignalDock", "jizizr", "https://github.com/jizizr/signaldock",
-        "岛通知模板参数与结果岛常驻策略参考",
-    ),
     OpenSourceProject(
         "miuix", "compose-miuix-ui", "https://github.com/compose-miuix-ui/miuix",
         "Compose UI 组件风格参考",

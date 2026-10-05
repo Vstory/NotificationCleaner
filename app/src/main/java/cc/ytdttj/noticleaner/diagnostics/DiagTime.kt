@@ -5,7 +5,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * 诊断时间戳工具（2.0.1 Dev 12，上岛延迟排查用）。
+ * 诊断时间戳工具（2.0.1 Dev 12，通知延迟排查用）。
  *
  * 背景：诊断日志的行首时间戳是**我们处理到该事件**的时刻，而通知真正的
  * 发布时间是 `StatusBarNotification.postTime`。此前日志只有前者，导致
