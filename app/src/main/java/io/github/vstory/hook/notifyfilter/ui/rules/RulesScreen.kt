@@ -2,7 +2,6 @@ package io.github.vstory.hook.notifyfilter.ui.rules
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -37,14 +36,15 @@ import io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Switch
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class RulesViewModel(
@@ -129,7 +129,7 @@ fun RulesScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            TabRow(
+            TabRowWithContour(
                 tabs = listOf("过滤规则 (${rules.size})", "白名单 (${whitelist.size})"),
                 selectedTabIndex = tab,
                 onTabSelected = { tab = it },
@@ -167,16 +167,12 @@ fun RulesScreen(
     }
 }
 
-/** 规则摘要：APP + 条件列表 */
-@Composable
-private fun RuleSummary(rule: RuleEntity) {
+/** 规则摘要：APP + 条件列表 + 该规则累计过滤条数（NLS 端 + 模块端回流记录） */
+private fun ruleSummaryText(rule: RuleEntity, hitCount: Int): String {
     val cs = rule.conditionSet()
-    Text(rule.appName, style = MiuixTheme.textStyles.body1)
-    if (cs.conditions.isEmpty()) {
-        Text("无条件", style = MiuixTheme.textStyles.footnote1)
-        return
-    }
-    Text(
+    val conditions = if (cs.conditions.isEmpty()) {
+        "无条件"
+    } else {
         buildString {
             append(if (cs.join == "OR") "任一条件" else "全部条件")
             append("满足时过滤：")
@@ -186,42 +182,36 @@ private fun RuleSummary(rule: RuleEntity) {
                 append(MatchMode.label(c.mode))
                 append("]")
             }
-        },
-        style = MiuixTheme.textStyles.footnote1,
-        maxLines = 2,
-    )
+        }
+    }
+    return "$conditions\n已过滤 $hitCount 条通知"
 }
 
 @Composable
 private fun RuleCard(rule: RuleEntity, hitCount: Int, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                RuleSummary(rule)
-                Spacer(Modifier.height(2.dp))
-                // 1.4.0 Dev 2：该规则累计过滤的通知条数（NLS 端 + 模块端回流记录）
-                Text(
-                    "已过滤 $hitCount 条通知",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.outline,
-                )
-            }
-            Switch(checked = rule.enabled, onCheckedChange = onToggle)
-            IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "删除") }
-        }
+        SwitchPreference(
+            checked = rule.enabled,
+            onCheckedChange = onToggle,
+            title = rule.appName,
+            summary = ruleSummaryText(rule, hitCount),
+            endActions = {
+                IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "删除") }
+            },
+        )
     }
 }
 
 @Composable
 private fun WhitelistCard(item: WhitelistEntity, onRemove: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(item.appName, style = MiuixTheme.textStyles.body1)
-                Text(item.packageName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.outline)
-            }
-            IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = "移除") }
-        }
+        BasicComponent(
+            title = item.appName,
+            summary = item.packageName,
+            endActions = {
+                IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = "移除") }
+            },
+        )
     }
 }
 
