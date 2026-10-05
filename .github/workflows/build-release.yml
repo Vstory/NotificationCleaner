@@ -116,7 +116,7 @@ jobs:
       # tag / 页面名 / 产物名集中在编译之前：tag 冲突只花几秒就能拦下。
       # ⚠️ 目标 tag 已存在 → 直接失败：同 tag 重发会把整页正文与附件覆盖掉（历史正式版页可能带
       #    手写 notes），要重发请先 bump versionCode。
-      # 命名：<前缀>.<版本>.<code>.release.apk（与 CI 渠道的 …_<时间>_ci-debug_<短号>.apk 一眼可分）
+      # 命名：<前缀>.<版本>.<code>.release.apk（与 CI 渠道的 …_<时间>_ci-<变体>_<短号>.apk 一眼可分）
       - name: Resolve release target and APK name
         id: target
         env:
@@ -322,22 +322,19 @@ jobs:
           fi
           echo "  ✅ 签名有效，指纹与固定密钥一致：$ACTUAL"
 
-          # ⑦ 签名方案：v3 必有（API 28+ 的校验路径）。v2 **只在 minSdk < 28 时才产出** ——
-          #    apksig 判定 minSdk ≥ 28 时 v2 冗余，显式 enableV2Signing=true 也不写
-          #    （实测 minSdk 33/28 ⇒ 仅 v3；26 ⇒ v2+v3）。故按源码 minSdk 决定是否要求 v2。
-          #    不断言 v1：它只服务 Android ≤6.0，本项目 minSdk ≥ 26，断言它必然误报。
-          MINSDK="$(sed -nE 's/^[[:space:]]*minSdk = ([0-9]+).*/\1/p' app/build.gradle.kts | head -1)"
-          case "$MINSDK" in
-            ''|*[!0-9]*) echo "::error::读不到 minSdk（app/build.gradle.kts）"; exit 1 ;;
-          esac
-          VERBOSE="$("$APKSIGNER" verify --verbose "$APK" 2>&1 || true)"
-          SCHEMES="v3"
-          if [ "$MINSDK" -lt 28 ]; then SCHEMES="v2 v3"; fi
+          # ⑦ 签名方案：v2 与 v3 都必须在。
+          #    ⚠️ 必须带 --min-sdk-version 24：verify 默认按 manifest 的 minSdk（本项目 33）判定，
+          #       而 minSdk ≥ 28 时 apksig 视 v2 为冗余、**跳过其验证与上报** ⇒ 报 "v2: false"。
+          #       那是上报语义而非块缺失（实测该产物 Signing Block 内 v2=0x7109871a 块确实存在，
+          #       只是没被列出来）。钉到 24（v2 起效的最低 API）后两个布尔值才如实反映块的存在。
+          #    不断言 v1：它只服务 Android ≤6.0，本项目 minSdk 33 且配置里已显式关闭 ⇒ 断言必误报。
+          VERBOSE="$("$APKSIGNER" verify --verbose --min-sdk-version 24 "$APK" 2>&1 || true)"
+          SCHEMES="v2 v3"
           for scheme in $SCHEMES; do
             printf '%s' "$VERBOSE" | grep -qE "Verified using ${scheme} scheme.*: true" \
-              || { echo "::error::$NAME 未启用 ${scheme} 签名方案（minSdk=${MINSDK}）—— 拒绝发布"; printf '%s\n' "$VERBOSE"; exit 1; }
+              || { echo "::error::$NAME 未启用 ${scheme} 签名方案 —— 拒绝发布"; printf '%s\n' "$VERBOSE"; exit 1; }
           done
-          echo "  ✅ 签名方案含 ${SCHEMES// /+}（minSdk=${MINSDK}）"
+          echo "  ✅ 签名方案含 v2+v3"
 
           echo "CERT_SHA256=$ACTUAL" >> "$GITHUB_ENV"
           echo "SIGN_SCHEMES=${SCHEMES// /+}" >> "$GITHUB_ENV"

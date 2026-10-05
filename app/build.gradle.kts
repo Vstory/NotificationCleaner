@@ -48,10 +48,11 @@ android {
                 storePassword = localProps.getProperty("storePassword")
                 keyAlias = localProps.getProperty("keyAlias")
                 keyPassword = localProps.getProperty("keyPassword")
-                // v1（JAR 签名）只对 API < 24 有意义，本项目 minSdk 33 ⇒ 关；
-                // v3 是 API 28+ 的校验路径，AGP 默认不开，须显式启用；v4 会多产 .idsig，本项目不分发
-                // ⚠️ enableV2Signing 对本项目是空配置：apksig 在 minSdk ≥ 28 时判定 v2 冗余，
-                //    这里写 true 也不产出 v2（实测产物仅 v3）。留着只为将来降 minSdk 时自动生效。
+                // v1（JAR 签名）只对 API < 24 有意义，本项目 minSdk 33 ⇒ 关；v4 会多产 .idsig，不分发
+                // ⚠️ v2 与 v3 **两个块都会写进产物**。别用 `apksigner verify --verbose` 的布尔值判断
+                //    v2 在不在 —— minSdk ≥ 28 时 apksig 视 v2 为冗余、跳过其验证与上报（报 v2:false），
+                //    那是上报语义而非块缺失。要判存在性：加 --min-sdk-version 24，或直接读
+                //    APK Signing Block 的块 ID（v2=0x7109871a / v3=0xf05368c0）。
                 enableV1Signing = false
                 enableV2Signing = true
                 enableV3Signing = true
