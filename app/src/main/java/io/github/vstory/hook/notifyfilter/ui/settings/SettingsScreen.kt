@@ -263,9 +263,6 @@ fun SettingsScreen(
     var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
 
-    var permAdvancedOpen by remember { mutableStateOf(false) }
-    var historyPanelOpen by remember { mutableStateOf(false) }
-    var advancedOpen by remember { mutableStateOf(false) }
     var confirmResetModel by remember { mutableStateOf(false) }
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
@@ -301,7 +298,6 @@ fun SettingsScreen(
     ) {
         Spacer(Modifier.height(8.dp))
 
-        // ---- 过滤 ----
         SmallTitle("过滤")
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             SwitchPreference(
@@ -322,7 +318,15 @@ fun SettingsScreen(
             )
         }
 
-        // ---- 权限与保活 ----
+        SmallTitle("模型")
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+            ArrowPreference(
+                title = "AI 模型",
+                summary = "$modelInfo；点击重置为预训练基线",
+                onClick = { confirmResetModel = true },
+            )
+        }
+
         SmallTitle("权限与保活")
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             ArrowPreference(
@@ -342,58 +346,54 @@ fun SettingsScreen(
                 title = "在多任务界面隐藏",
                 summary = "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
             )
-            ArrowPreference(
-                title = "高级权限（可选）",
-                summary = "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
-                onClick = { permAdvancedOpen = !permAdvancedOpen },
-            )
-            if (permAdvancedOpen) {
-                AdvancedRow(
-                    label = "Shizuku 保活",
-                    desc = "免 Root 写入电池优化白名单 / 通知监听权限",
-                    ok = keepAlive.shizukuAvailable,
-                    actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
-                    onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
-                )
-                AdvancedRow(
-                    label = "Root 保活",
-                    desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
-                    ok = keepAlive.rootAvailable,
-                    actionLabel = "应用",
-                    onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
-                )
-                AdvancedRow(
-                    label = "LSPosed 保活",
-                    desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
-                        "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
-                    ok = keepAlive.lspDetected == true,
-                    actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
-                            io.github.vstory.hook.notifyfilter.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
-                        )
-                    ) "授权" else null,
-                    onAction = {
-                        if (lspServiceState.bound) vm.requestKeepAliveScope()
-                        else vm.showToast("请先在 LSPosed 中启用本模块")
-                    },
-                )
-                AdvancedRow(
-                    label = "无障碍保活",
-                    desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
-                    ok = keepAlive.accessibilityEnabled,
-                    actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
-                    onAction = { vm.openAccessibilitySettings() },
-                )
-                AdvancedRow(
-                    label = "修复通知监听",
-                    desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
-                    ok = keepAlive.listenerEnabled,
-                    actionLabel = "修复",
-                    onAction = { vm.repairListener() },
-                )
-            }
         }
 
-        // ---- 数据 ----
+        SmallTitle("高级权限")
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+            AdvancedRow(
+                label = "Shizuku 保活",
+                desc = "免 Root 写入电池优化白名单 / 通知监听权限",
+                ok = keepAlive.shizukuAvailable,
+                actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
+                onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
+            )
+            AdvancedRow(
+                label = "Root 保活",
+                desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
+                ok = keepAlive.rootAvailable,
+                actionLabel = "应用",
+                onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
+            )
+            AdvancedRow(
+                label = "LSPosed 保活",
+                desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
+                    "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
+                ok = keepAlive.lspDetected == true,
+                actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
+                        io.github.vstory.hook.notifyfilter.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
+                    )
+                ) "授权" else null,
+                onAction = {
+                    if (lspServiceState.bound) vm.requestKeepAliveScope()
+                    else vm.showToast("请先在 LSPosed 中启用本模块")
+                },
+            )
+            AdvancedRow(
+                label = "无障碍保活",
+                desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
+                ok = keepAlive.accessibilityEnabled,
+                actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
+                onAction = { vm.openAccessibilitySettings() },
+            )
+            AdvancedRow(
+                label = "修复通知监听",
+                desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
+                ok = keepAlive.listenerEnabled,
+                actionLabel = "修复",
+                onAction = { vm.repairListener() },
+            )
+        }
+
         SmallTitle("数据")
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             ArrowPreference(
@@ -439,63 +439,54 @@ fun SettingsScreen(
                     }
                 },
             )
-            // ---- 历史通知管理（Dev 6，折叠）----
             ArrowPreference(
-                title = "历史通知管理",
-                summary = "CSV 导出与保留天数",
-                onClick = { historyPanelOpen = !historyPanelOpen },
+                title = "导出历史通知 CSV",
+                summary = when {
+                    csvExporting -> "导出中…"
+                    csvMsg != null -> csvMsg
+                    else -> "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享"
+                },
+                enabled = !csvExporting,
+                onClick = {
+                    csvMsg = null
+                    csvExporting = true
+                    csvScope.launch {
+                        val msg = runCatching {
+                            val file = io.github.vstory.hook.notifyfilter.diagnostics.HistoryCsvExporter.export(diagContext)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                diagContext,
+                                "${diagContext.packageName}.fileprovider",
+                                file,
+                            )
+                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            diagContext.startActivity(
+                                android.content.Intent.createChooser(send, "分享历史通知 CSV"),
+                            )
+                            "已导出 ${file.name}（${file.length() / 1024}KB）"
+                        }.getOrElse { "导出失败: ${it.message}" }
+                        csvExporting = false
+                        csvMsg = msg
+                    }
+                },
             )
-            if (historyPanelOpen) {
-                ArrowPreference(
-                    title = "导出历史通知 CSV",
-                    summary = when {
-                        csvExporting -> "导出中…"
-                        csvMsg != null -> csvMsg
-                        else -> "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享"
-                    },
-                    enabled = !csvExporting,
-                    onClick = {
-                        csvMsg = null
-                        csvExporting = true
-                        csvScope.launch {
-                            val msg = runCatching {
-                                val file = io.github.vstory.hook.notifyfilter.diagnostics.HistoryCsvExporter.export(diagContext)
-                                val uri = androidx.core.content.FileProvider.getUriForFile(
-                                    diagContext,
-                                    "${diagContext.packageName}.fileprovider",
-                                    file,
-                                )
-                                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/csv"
-                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                diagContext.startActivity(
-                                    android.content.Intent.createChooser(send, "分享历史通知 CSV"),
-                                )
-                                "已导出 ${file.name}（${file.length() / 1024}KB）"
-                            }.getOrElse { "导出失败: ${it.message}" }
-                            csvExporting = false
-                            csvMsg = msg
-                        }
-                    },
-                )
-                // 保留天数（监控式循环：最新的顶掉 N 天前的）
-                SliderPreference(
-                    value = retentionDraft.toFloat(),
-                    onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
-                    title = "历史保留天数",
-                    summary = "未学习的历史通知只保留设定天数，最新通知不断把最老的顶掉（监控式循环保存）；" +
-                        "已学习的标注不受影响",
-                    valueText = "$retentionDraft 天",
-                    valueRange = 1f..30f,
-                    steps = 28,
-                    onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
-                )
-            }
+            // 保留天数（监控式循环：最新的顶掉 N 天前的）
+            SliderPreference(
+                value = retentionDraft.toFloat(),
+                onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
+                title = "历史保留天数",
+                summary = "未学习的历史通知只保留设定天数，最新通知不断把最老的顶掉（监控式循环保存）；" +
+                    "已学习的标注不受影响",
+                valueText = "$retentionDraft 天",
+                valueRange = 1f..30f,
+                steps = 28,
+                onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
+            )
         }
 
-        // ---- 关于 ----
         SmallTitle("关于")
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
@@ -509,19 +500,6 @@ fun SettingsScreen(
                 enabled = !checking,
                 onClick = { updateVm.checkUpdate() },
             )
-            ArrowPreference(
-                title = "高级功能",
-                summary = "AI 模型学习与重置",
-                onClick = { advancedOpen = !advancedOpen },
-            )
-            if (advancedOpen) {
-                // ---- AI 模型（重置需二次确认） ----
-                ArrowPreference(
-                    title = "AI 模型",
-                    summary = "$modelInfo；点击重置为预训练基线",
-                    onClick = { confirmResetModel = true },
-                )
-            }
             ArrowPreference(
                 title = "参考开源项目",
                 summary = "本项目的借鉴、参考与依赖来源",
