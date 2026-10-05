@@ -1,28 +1,35 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package cc.ytdttj.noticleaner.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,9 +42,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -51,6 +59,14 @@ import cc.ytdttj.noticleaner.notify.KeepAliveStatus
 import cc.ytdttj.noticleaner.notify.RootExecutor
 import cc.ytdttj.noticleaner.notify.ShizukuExecutor
 import cc.ytdttj.noticleaner.notify.runKeepAliveCommands
+import cc.ytdttj.noticleaner.ui.DarkMode
+import cc.ytdttj.noticleaner.ui.ThemeColor
+import cc.ytdttj.noticleaner.ui.components.SectionHeader
+import cc.ytdttj.noticleaner.ui.components.SettingRow
+import cc.ytdttj.noticleaner.ui.components.SettingSliderRow
+import cc.ytdttj.noticleaner.ui.components.SettingSwitchRow
+import cc.ytdttj.noticleaner.ui.components.groupedListShape
+import cc.ytdttj.noticleaner.ui.swatch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,18 +84,17 @@ class SettingsViewModel(
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    // ---- 界面风格（1.4.0 Dev 4）：Material 3 / 液态玻璃 ----
-    val uiTheme = settings.uiTheme.stateIn(viewModelScope, SharingStarted.Eagerly, cc.ytdttj.noticleaner.ui.UiTheme.MATERIAL.name)
+    // ---- 外观（1.5.1）----
+    val darkMode = settings.darkMode.stateIn(viewModelScope, SharingStarted.Eagerly, DarkMode.SYSTEM.name)
 
-    fun setUiTheme(mode: cc.ytdttj.noticleaner.ui.UiTheme) {
-        viewModelScope.launch { settings.setUiTheme(mode.name) }
+    fun setDarkMode(mode: DarkMode) {
+        viewModelScope.launch { settings.setDarkMode(mode.name) }
     }
 
-    // ---- 玻璃清晰度（1.4.0 Dev 5）：磨砂 / 柔光 ----
-    val glassStyle = settings.glassStyle.stateIn(viewModelScope, SharingStarted.Eagerly, cc.ytdttj.noticleaner.ui.GlassStyle.FROSTED.name)
+    val themeColor = settings.themeColor.stateIn(viewModelScope, SharingStarted.Eagerly, ThemeColor.DYNAMIC.name)
 
-    fun setGlassStyle(style: cc.ytdttj.noticleaner.ui.GlassStyle) {
-        viewModelScope.launch { settings.setGlassStyle(style.name) }
+    fun setThemeColor(color: ThemeColor) {
+        viewModelScope.launch { settings.setThemeColor(color.name) }
     }
 
     private val _keepAlive = MutableStateFlow(KeepAliveStatus())
@@ -275,14 +290,22 @@ fun SettingsScreen(
     val lspServiceState by vm.lspServiceState.collectAsState()
     val modelInfo by vm.modelInfo.collectAsState()
     val execResult by vm.execResult.collectAsState()
-    val execBusy by vm.execBusy.collectAsState()
-    var thresholdInput by remember(threshold) { mutableStateOf("%.2f".format(threshold)) }
-    val uiThemeMode by vm.uiTheme.collectAsState()
-    val glassStyleMode by vm.glassStyle.collectAsState()
+    val darkModeName by vm.darkMode.collectAsState()
+    val themeColorName by vm.themeColor.collectAsState()
+    val historyRetentionDays by vm.historyRetentionDays.collectAsState()
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
+    val context = LocalContext.current
+
+    // VM 的瞬时提示（如「仅支持 Android 10 及以上系统」）此前在界面里无处显示 → 统一走系统 Toast
+    val toastMsg by vm.toast.collectAsState()
+    LaunchedEffect(toastMsg) {
+        toastMsg?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            vm.clearToast()
+        }
+    }
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
-    val context = LocalContext.current
     var prevExclude by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(excludeRecents) {
         if (prevExclude != null && prevExclude != excludeRecents) {
@@ -299,438 +322,332 @@ fun SettingsScreen(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            // Dev 15：玻璃模式下悬浮底栏位于 Scaffold 之外，会盖住滚到最底部的功能块
-            // → 内容底部让位一个底栏高度（非玻璃模式有 bottomBar，无需让位）
-            .padding(bottom = if (cc.ytdttj.noticleaner.ui.LocalGlassMode.current) {
-                cc.ytdttj.noticleaner.ui.glass.GlassFloatingBarClearance
-            } else {
-                0.dp
-            })
-            .padding(16.dp),
+            .padding(horizontal = 16.dp),
     ) {
-        // ---- 界面风格切换（1.4.0 Dev 4）：液态玻璃 / Material 3 ----
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("界面风格", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("液态玻璃或 Material 3；玻璃模式含壁纸折射、磨砂卡片与胶囊底栏", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(
-                    checked = uiThemeMode == cc.ytdttj.noticleaner.ui.UiTheme.GLASS.name,
-                    onCheckedChange = {
-                        vm.setUiTheme(
-                            if (it) cc.ytdttj.noticleaner.ui.UiTheme.GLASS else cc.ytdttj.noticleaner.ui.UiTheme.MATERIAL,
-                        )
-                    },
-                )
-            }
-        }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // ---- 玻璃清晰度（1.4.0 Dev 5）：仅玻璃主题下显示 ----
-        if (uiThemeMode == cc.ytdttj.noticleaner.ui.UiTheme.GLASS.name) {
-            cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("玻璃清晰度", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text("柔光玻璃近乎全透明；磨砂玻璃提供一定可读性", style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        cc.ytdttj.noticleaner.ui.GlassStyle.entries.forEachIndexed { index, style ->
-                            SegmentedButton(
-                                selected = glassStyleMode == style.name,
-                                onClick = { vm.setGlassStyle(style) },
-                                shape = SegmentedButtonDefaults.itemShape(index = index, count = cc.ytdttj.noticleaner.ui.GlassStyle.entries.size),
-                            ) { Text(style.label) }
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-        }
+        // ================= 常规 =================
+        SectionHeader("常规")
+        SettingSwitchRow(
+            title = "拦截模式",
+            supporting = "关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）",
+            checked = intercept,
+            shape = groupedListShape(0, 2),
+            onCheckedChange = { vm.setInterceptMode(it) },
+        )
+        Spacer(Modifier.height(2.dp))
+        SettingSwitchRow(
+            title = "在多任务界面隐藏",
+            supporting = "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+）",
+            checked = excludeRecents,
+            shape = groupedListShape(1, 2),
+            onCheckedChange = { vm.setExcludeFromRecents(it) },
+        )
 
-        // ---- 拦截模式 ----
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("拦截模式", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(checked = intercept, onCheckedChange = { vm.setInterceptMode(it) })
-            }
-        }
-        Spacer(Modifier.height(12.dp))
+        // ================= 过滤 =================
+        SectionHeader("过滤")
+        SettingSliderRow(
+            title = "过滤阈值",
+            supporting = "AI 判定广告概率 ≥ 阈值时自动清除（默认 0.8）",
+            value = threshold,
+            valueRange = 0.5f..1.0f,
+            steps = 9,
+            shape = groupedListShape(0, 3),
+            onValueCommit = { vm.setThreshold(it) },
+        )
+        Spacer(Modifier.height(2.dp))
+        SettingRow(
+            title = "已过滤 ${filteredCount} 条通知",
+            shape = groupedListShape(1, 3),
+            trailingText = "查看明细",
+            onClick = { onOpenStats("filtered") },
+        )
+        Spacer(Modifier.height(2.dp))
+        SettingRow(
+            title = "已学习 ${learnedCount} 条通知",
+            shape = groupedListShape(2, 3),
+            trailingText = "查看明细",
+            onClick = { onOpenStats("learned") },
+        )
 
-        // ---- 过滤阈值 ----
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("过滤阈值", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text("AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedTextField(
-                        value = thresholdInput,
-                        onValueChange = { s ->
-                            // 仅编辑本地输入，点击"保存"后才生效
-                            thresholdInput = s
-                        },
-                        label = { Text("阈值 (0.5~1.0)") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = {
-                        thresholdInput = "0.80"
-                        vm.setThreshold(0.8f)
-                    }) { Text("恢复默认") }
-                    Spacer(Modifier.width(8.dp))
-                    val parsed = thresholdInput.toFloatOrNull()
-                    val valid = parsed != null && parsed in 0.5f..1.0f && parsed != threshold
-                    androidx.compose.material3.Button(
-                        enabled = valid,
-                        onClick = { parsed?.let { vm.setThreshold(it) } },
-                    ) { Text("保存") }
-                }
-                if (thresholdInput.toFloatOrNull()?.let { it !in 0.5f..1.0f } == true) {
-                    Text("请输入 0.5 ~ 1.0 之间的数值", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
+        // ================= 外观 =================
+        SectionHeader("外观")
+        DarkModeRow(
+            current = DarkMode.from(darkModeName),
+            shape = groupedListShape(0, 2),
+            onPick = { vm.setDarkMode(it) },
+        )
+        Spacer(Modifier.height(2.dp))
+        ThemeColorRow(
+            current = ThemeColor.from(themeColorName),
+            shape = groupedListShape(1, 2),
+            onPick = { vm.setThemeColor(it) },
+        )
 
-        // ---- 统计 ----
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("统计", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().clickable { onOpenStats("filtered") }.padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("已过滤 ${filteredCount} 条通知", Modifier.weight(1f))
-                    Text("查看明细 ›", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                }
-                HorizontalDivider()
-                Row(
-                    Modifier.fillMaxWidth().clickable { onOpenStats("learned") }.padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("已学习 ${learnedCount} 条通知", Modifier.weight(1f))
-                    Text("查看明细 ›", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 多任务隐藏 ----
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("在多任务界面隐藏", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "系统多任务界面不显示本 APP 的后台卡片，防止误滑删除（需 Android 10+，关闭后恢复显示）",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Switch(checked = excludeRecents, onCheckedChange = { vm.setExcludeFromRecents(it) })
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ---- 权限检查（1.3.0 beta2：原「后台保活」，高级项折叠） ----
+        // ================= 权限与保活 =================
         var permAdvancedOpen by remember { mutableStateOf(false) }
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Text("权限检查", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                StatusRow("通知监听权限", keepAlive.listenerEnabled) { vm.openListenerSettings() }
-                StatusRow("电池优化白名单", keepAlive.ignoringBattery) { vm.requestIgnoreBattery() }
-                manufacturerHint?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                    Spacer(Modifier.height(8.dp))
-                }
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().clickable { permAdvancedOpen = !permAdvancedOpen },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "高级权限（可选）",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(if (permAdvancedOpen) "收起" else "展开", style = MaterialTheme.typography.bodySmall)
-                }
-                if (permAdvancedOpen) {
-                    Spacer(Modifier.height(4.dp))
-                    AdvancedRow(
-                        label = "Shizuku 保活",
-                        desc = "免 Root 写入电池优化白名单 / 通知监听权限",
-                        ok = keepAlive.shizukuAvailable,
-                        actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
-                        onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
-                    )
-                    AdvancedRow(
-                        label = "Root 保活",
-                        desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
-                        ok = keepAlive.rootAvailable,
-                        actionLabel = "应用",
-                        onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
-                    )
-                    AdvancedRow(
-                        label = "LSPosed 保活",
-                        desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
-                            "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
-                        ok = keepAlive.lspDetected == true,
-                        actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
-                                cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
-                            )
-                        ) "授权" else null,
-                        onAction = {
-                            if (lspServiceState.bound) vm.requestKeepAliveScope()
-                            else vm.showToast("请先在 LSPosed 中启用本模块")
-                        },
-                    )
-                    AdvancedRow(
-                        label = "无障碍保活",
-                        desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
-                        ok = keepAlive.accessibilityEnabled,
-                        actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
-                        onAction = { vm.openAccessibilitySettings() },
-                    )
-                    AdvancedRow(
-                        label = "修复通知监听",
-                        desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
-                        ok = keepAlive.listenerEnabled,
-                        actionLabel = "修复",
-                        onAction = { vm.repairListener() },
-                    )
-                }
-            }
+        val permTotal = if (manufacturerHint != null) 4 else 3
+        var permIndex = 0
+        SectionHeader("权限与保活")
+        StatusRow(
+            label = "通知监听权限",
+            ok = keepAlive.listenerEnabled,
+            shape = groupedListShape(permIndex++, permTotal),
+            onAction = { vm.openListenerSettings() },
+        )
+        Spacer(Modifier.height(2.dp))
+        StatusRow(
+            label = "电池优化白名单",
+            ok = keepAlive.ignoringBattery,
+            shape = groupedListShape(permIndex++, permTotal),
+            onAction = { vm.requestIgnoreBattery() },
+        )
+        if (manufacturerHint != null) {
+            Spacer(Modifier.height(2.dp))
+            SettingRow(
+                title = "厂商自启动设置",
+                supporting = manufacturerHint,
+                shape = groupedListShape(permIndex++, permTotal),
+            )
         }
-        Spacer(Modifier.height(12.dp))
-
-
-        // ---- 检查更新 ----
-        val updateVm: cc.ytdttj.noticleaner.update.UpdateViewModel =
-            viewModel(key = "update", factory = viewModelFactory { initializer { cc.ytdttj.noticleaner.update.UpdateViewModel() } })
-        val updateState by updateVm.state.collectAsState()
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("检查更新", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "当前版本 v${cc.ytdttj.noticleaner.BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(
-                        enabled = updateState !is cc.ytdttj.noticleaner.update.UpdateState.Checking,
-                        onClick = { updateVm.checkUpdate() },
-                    ) { Text("检查") }
-                }
-            }
+        Spacer(Modifier.height(2.dp))
+        SettingRow(
+            title = "高级权限（可选）",
+            supporting = "Shizuku / Root / LSPosed / 无障碍 / 强制修复",
+            shape = groupedListShape(permIndex, permTotal),
+            trailingText = if (permAdvancedOpen) "收起" else "展开",
+            onClick = { permAdvancedOpen = !permAdvancedOpen },
+        )
+        if (permAdvancedOpen) {
+            Spacer(Modifier.height(2.dp))
+            val advTotal = 5
+            AdvancedRow(
+                label = "Shizuku 保活",
+                desc = "免 Root 写入电池优化白名单 / 通知监听权限",
+                ok = keepAlive.shizukuAvailable,
+                actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
+                shape = groupedListShape(0, advTotal),
+                onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
+            )
+            Spacer(Modifier.height(2.dp))
+            AdvancedRow(
+                label = "Root 保活",
+                desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
+                ok = keepAlive.rootAvailable,
+                actionLabel = "应用",
+                shape = groupedListShape(1, advTotal),
+                onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
+            )
+            Spacer(Modifier.height(2.dp))
+            AdvancedRow(
+                label = "LSPosed 保活",
+                desc = "在 LSPosed 中激活本模块并勾选「系统(android)」作用域后自动生效，重启手机完成。" +
+                    "未打勾 = 未检测到激活证据，以 LSPosed 管理器为准",
+                ok = keepAlive.lspDetected == true,
+                actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
+                        cc.ytdttj.noticleaner.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
+                    )
+                ) "授权" else null,
+                shape = groupedListShape(2, advTotal),
+                onAction = {
+                    if (lspServiceState.bound) vm.requestKeepAliveScope()
+                    else vm.showToast("请先在 LSPosed 中启用本模块")
+                },
+            )
+            Spacer(Modifier.height(2.dp))
+            AdvancedRow(
+                label = "无障碍保活",
+                desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
+                ok = keepAlive.accessibilityEnabled,
+                actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
+                shape = groupedListShape(3, advTotal),
+                onAction = { vm.openAccessibilitySettings() },
+            )
+            Spacer(Modifier.height(2.dp))
+            AdvancedRow(
+                label = "修复通知监听",
+                desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
+                ok = keepAlive.listenerEnabled,
+                actionLabel = "修复",
+                shape = groupedListShape(4, advTotal),
+                onAction = { vm.repairListener() },
+            )
         }
-        // ---- 导出诊断日志（1.3.2 恢复：1.3.0 设置页重排时丢失）----
-        // 内容 = 版本/权限设置快照 + logcat，经系统分享
-        val diagContext = LocalContext.current
+
+        // ================= 数据与诊断 =================
+        var historyPanelOpen by remember { mutableStateOf(false) }
         val diagScope = rememberCoroutineScope()
         var diagExporting by remember { mutableStateOf(false) }
         var diagMsg by remember { mutableStateOf<String?>(null) }
-        Spacer(Modifier.height(12.dp))
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("导出诊断日志", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(
-                        enabled = !diagExporting,
+        var csvExporting by remember { mutableStateOf(false) }
+        var csvMsg by remember { mutableStateOf<String?>(null) }
+        SectionHeader("数据与诊断")
+        SettingRow(
+            title = "导出诊断日志",
+            supporting = "导出 ZIP：每个模块一个 log 文件，各自覆盖导出前完整 24 小时",
+            shape = groupedListShape(0, 2),
+            trailing = {
+                OutlinedButton(
+                    enabled = !diagExporting,
+                    onClick = {
+                        diagExporting = true
+                        diagScope.launch {
+                            diagMsg = runCatching {
+                                val file = cc.ytdttj.noticleaner.diagnostics.DiagExporter.export(context)
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file,
+                                )
+                                val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
+                                    type = "application/zip"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    android.content.Intent.createChooser(send, "分享诊断日志"),
+                                )
+                                "已导出: ${file.name}（${file.length() / 1024}KB）"
+                            }.getOrElse { "导出失败: ${it.message}" }
+                            diagExporting = false
+                        }
+                    },
+                ) { Text(if (diagExporting) "导出中…" else "导出") }
+            },
+        )
+        diagMsg?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 20.dp, top = 4.dp),
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        SettingRow(
+            title = "历史通知管理",
+            supporting = "CSV 导出与保留天数",
+            shape = groupedListShape(1, 2),
+            trailingText = if (historyPanelOpen) "收起" else "展开",
+            onClick = { historyPanelOpen = !historyPanelOpen },
+        )
+        if (historyPanelOpen) {
+            Spacer(Modifier.height(2.dp))
+            val histTotal = 2
+            SettingRow(
+                title = "导出历史通知 CSV",
+                supporting = "全部历史（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享",
+                shape = groupedListShape(0, histTotal),
+                trailing = {
+                    OutlinedButton(
+                        enabled = !csvExporting,
                         onClick = {
-                            diagExporting = true
+                            csvExporting = true
                             diagScope.launch {
-                                val msg = runCatching {
-                                    val file = cc.ytdttj.noticleaner.diagnostics.DiagExporter.export(diagContext)
+                                csvMsg = runCatching {
+                                    val file = cc.ytdttj.noticleaner.diagnostics.HistoryCsvExporter.export(context)
                                     val uri = androidx.core.content.FileProvider.getUriForFile(
-                                        diagContext,
-                                        "${diagContext.packageName}.fileprovider",
+                                        context,
+                                        "${context.packageName}.fileprovider",
                                         file,
                                     )
                                     val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                        // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
-                                        type = "application/zip"
+                                        type = "text/csv"
                                         putExtra(android.content.Intent.EXTRA_STREAM, uri)
                                         addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
-                                    diagContext.startActivity(
-                                        android.content.Intent.createChooser(send, "分享诊断日志"),
+                                    context.startActivity(
+                                        android.content.Intent.createChooser(send, "分享历史通知 CSV"),
                                     )
-                                    "已导出: ${file.name}（${file.length() / 1024}KB）"
+                                    "已导出 ${file.name}（${file.length() / 1024}KB）"
                                 }.getOrElse { "导出失败: ${it.message}" }
-                                diagExporting = false
-                                diagMsg = msg
+                                csvExporting = false
                             }
                         },
-                    ) { Text(if (diagExporting) "导出中…" else "导出") }
-                }
-                diagMsg?.let {
-                    Spacer(Modifier.height(4.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                }
-                // ---- 历史通知管理（Dev 6，折叠）----
-                var historyPanelOpen by remember { mutableStateOf(false) }
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth().clickable { historyPanelOpen = !historyPanelOpen },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        if (historyPanelOpen) "▾ 历史通知管理" else "▸ 历史通知管理",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                if (historyPanelOpen) {
-                    Spacer(Modifier.height(8.dp))
-                    // CSV 导出
-                    val csvScope = rememberCoroutineScope()
-                    var csvExporting by remember { mutableStateOf(false) }
-                    var csvMsg by remember { mutableStateOf<String?>(null) }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("导出历史通知 CSV", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "全部历史通知（应用/包名/通道/标题/正文/AI率/学习状态），经系统分享",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(
-                            enabled = !csvExporting,
-                            onClick = {
-                                csvExporting = true
-                                csvScope.launch {
-                                    val msg = runCatching {
-                                        val file = cc.ytdttj.noticleaner.diagnostics.HistoryCsvExporter.export(diagContext)
-                                        val uri = androidx.core.content.FileProvider.getUriForFile(
-                                            diagContext,
-                                            "${diagContext.packageName}.fileprovider",
-                                            file,
-                                        )
-                                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                            type = "text/csv"
-                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        diagContext.startActivity(
-                                            android.content.Intent.createChooser(send, "分享历史通知 CSV"),
-                                        )
-                                        "已导出 ${file.name}（${file.length() / 1024}KB）"
-                                    }.getOrElse { "导出失败: ${it.message}" }
-                                    csvExporting = false
-                                    csvMsg = msg
-                                }
-                            },
-                        ) { Text(if (csvExporting) "导出中…" else "导出") }
-                    }
-                    csvMsg?.let {
-                        Spacer(Modifier.height(4.dp))
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    // 保留天数（监控式循环：最新的顶掉 N 天前的）
-                    val historyRetentionDays by vm.historyRetentionDays.collectAsState()
-                    var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
-                    Column(Modifier.fillMaxWidth()) {
-                        Text("历史保留天数：${retentionDraft} 天", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            "未学习的历史通知只保留 N 天，最新通知不断把最老的顶掉（监控式循环保存）；已学习的标注不受影响",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        androidx.compose.material3.Slider(
-                            value = retentionDraft.toFloat(),
-                            onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
-                            onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
-                            valueRange = 1f..30f,
-                            steps = 28,
-                        )
-                    }
-                }
+                    ) { Text(if (csvExporting) "导出中…" else "导出") }
+                },
+            )
+            csvMsg?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, top = 4.dp),
+                )
             }
+            Spacer(Modifier.height(2.dp))
+            SettingSliderRow(
+                title = "历史保留天数",
+                supporting = "未学习的历史通知只保留 N 天，最新的顶掉最老的；已学习的标注不受影响",
+                value = historyRetentionDays.toFloat(),
+                valueRange = 1f..30f,
+                steps = 28,
+                shape = groupedListShape(1, histTotal),
+                onValueCommit = { vm.setHistoryRetentionDays(it.toInt().coerceIn(1, 30)) },
+                valueText = { "${it.toInt()} 天" },
+            )
         }
-        Spacer(Modifier.height(12.dp))
-        // ---- 高级功能（1.3.0 beta2：默认折叠） ----
+
+        // ================= 关于 =================
+        val updateVm: cc.ytdttj.noticleaner.update.UpdateViewModel =
+            viewModel(key = "update", factory = viewModelFactory { initializer { cc.ytdttj.noticleaner.update.UpdateViewModel() } })
+        val updateState by updateVm.state.collectAsState()
         var advancedOpen by remember { mutableStateOf(false) }
         var confirmResetModel by remember { mutableStateOf(false) }
-        cc.ytdttj.noticleaner.ui.glass.NcCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().clickable { advancedOpen = !advancedOpen },
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "高级功能",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(if (advancedOpen) "收起" else "展开", style = MaterialTheme.typography.bodySmall)
-                }
-                if (advancedOpen) {
-                    Spacer(Modifier.height(12.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(12.dp))
-                    // ---- AI 模型（重置需二次确认） ----
-                    Text("AI 模型", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(4.dp))
-                    Text(modelInfo, style = MaterialTheme.typography.bodySmall)
-                    Spacer(Modifier.height(8.dp))
-                    cc.ytdttj.noticleaner.ui.glass.NcOutlinedButton(onClick = { confirmResetModel = true }) { Text("重置模型（回到预训练基线）") }
-                    if (confirmResetModel) {
-                        cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
-                            onDismissRequest = { confirmResetModel = false },
-                            title = { Text("确认重置模型？") },
-                            text = { Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。") },
-                            confirmButton = {
-                                TextButton(onClick = { vm.resetModel(); confirmResetModel = false }) { Text("确认重置") }
-                            },
-                            dismissButton = { TextButton(onClick = { confirmResetModel = false }) { Text("取消") } },
-                        )
-                    }
-                }
-            }
+        SectionHeader("关于")
+        SettingRow(
+            title = "检查更新",
+            supporting = "当前版本 v${cc.ytdttj.noticleaner.BuildConfig.VERSION_NAME}",
+            shape = groupedListShape(0, 3),
+            trailing = {
+                OutlinedButton(
+                    enabled = updateState !is cc.ytdttj.noticleaner.update.UpdateState.Checking,
+                    onClick = { updateVm.checkUpdate() },
+                ) { Text("检查") }
+            },
+        )
+        Spacer(Modifier.height(2.dp))
+        SettingRow(
+            title = "参考开源项目",
+            supporting = "本项目的借鉴、参考与依赖来源",
+            shape = groupedListShape(1, 3),
+            trailingText = "›",
+            onClick = onOpenOpenSource,
+        )
+        Spacer(Modifier.height(2.dp))
+        SettingRow(
+            title = "AI 模型",
+            supporting = modelInfo,
+            shape = groupedListShape(2, 3),
+            trailingText = if (advancedOpen) "收起" else "展开",
+            onClick = { advancedOpen = !advancedOpen },
+        )
+        if (advancedOpen) {
+            Spacer(Modifier.height(2.dp))
+            SettingRow(
+                title = "重置模型",
+                supporting = "清除所有学习标注，回到预训练基线；已拦截统计不受影响，不可撤销",
+                shape = groupedListShape(0, 1),
+                trailing = {
+                    OutlinedButton(onClick = { confirmResetModel = true }) { Text("重置") }
+                },
+            )
         }
-        Spacer(Modifier.height(12.dp))
-        // ---- 参考开源项目（Dev 17）：高级功能块下方，跳转开源项目列表 ----
-        cc.ytdttj.noticleaner.ui.glass.NcCard(
-            Modifier.fillMaxWidth().clickable { onOpenOpenSource() },
-        ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "参考开源项目",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "本项目的借鉴、参考与依赖来源",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Text("›", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
-            }
+        Spacer(Modifier.height(24.dp))
+
+        if (confirmResetModel) {
+            AlertDialog(
+                onDismissRequest = { confirmResetModel = false },
+                title = { Text("确认重置模型？") },
+                text = { Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。") },
+                confirmButton = {
+                    TextButton(onClick = { vm.resetModel(); confirmResetModel = false }) { Text("确认重置") }
+                },
+                dismissButton = { TextButton(onClick = { confirmResetModel = false }) { Text("取消") } },
+            )
         }
-        Spacer(Modifier.height(12.dp))
+
         when (val s = updateState) {
             is cc.ytdttj.noticleaner.update.UpdateState.Checking -> UpdateStatusDialog(
                 title = "正在检查更新…", text = "正在请求更新源",
@@ -743,19 +660,19 @@ fun SettingsScreen(
             is cc.ytdttj.noticleaner.update.UpdateState.Error -> UpdateStatusDialog(
                 title = "更新失败", text = s.message, confirm = "知道了", onDismiss = { updateVm.reset() },
             )
-            is cc.ytdttj.noticleaner.update.UpdateState.Available -> cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
+            is cc.ytdttj.noticleaner.update.UpdateState.Available -> AlertDialog(
                 onDismissRequest = { updateVm.reset() },
                 title = { Text("发现新版本 v${s.release.versionName}") },
                 text = { Column { Text(s.release.notes.ifBlank { "无更新说明" }, style = MaterialTheme.typography.bodyMedium) } },
                 confirmButton = { TextButton(onClick = { updateVm.startDownload(s.release) }) { Text("立即更新") } },
                 dismissButton = { TextButton(onClick = { updateVm.reset() }) { Text("稍后再说") } },
             )
-            is cc.ytdttj.noticleaner.update.UpdateState.Downloading -> cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
+            is cc.ytdttj.noticleaner.update.UpdateState.Downloading -> AlertDialog(
                 onDismissRequest = {},
                 title = { Text("正在下载 v${s.release.versionName}") },
                 text = {
                     Column {
-                        androidx.compose.material3.LinearProgressIndicator(
+                        LinearProgressIndicator(
                             progress = { s.progress / 100f },
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -765,7 +682,7 @@ fun SettingsScreen(
                 },
                 confirmButton = { TextButton(onClick = { updateVm.cancelDownload() }) { Text("取消") } },
             )
-            is cc.ytdttj.noticleaner.update.UpdateState.ReadyToInstall -> cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
+            is cc.ytdttj.noticleaner.update.UpdateState.ReadyToInstall -> AlertDialog(
                 onDismissRequest = { updateVm.reset() },
                 title = { Text("下载完成") },
                 text = { Text("点击「安装」打开系统安装器升级到 v${s.release.versionName}。") },
@@ -775,9 +692,8 @@ fun SettingsScreen(
             cc.ytdttj.noticleaner.update.UpdateState.Idle -> Unit
         }
 
-        // ---- 高级保活执行结果弹窗 ----
         execResult?.let { result ->
-            cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
+            AlertDialog(
                 onDismissRequest = { vm.dismissExecResult() },
                 title = { Text("保活命令执行结果") },
                 text = {
@@ -791,9 +707,73 @@ fun SettingsScreen(
     }
 }
 
+/** 深浅色三态：分段按钮直接呈现全部选项，无需点开二级界面 */
+@Composable
+private fun DarkModeRow(current: DarkMode, shape: Shape, onPick: (DarkMode) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+            Text("深浅色", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(10.dp))
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                DarkMode.entries.forEachIndexed { index, mode ->
+                    SegmentedButton(
+                        selected = current == mode,
+                        onClick = { onPick(mode) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = DarkMode.entries.size),
+                    ) { Text(mode.label) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeColorRow(current: ThemeColor, shape: Shape, onPick: (ThemeColor) -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+            Text("主题色", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                "动态取色跟随系统壁纸（Android 12+），也可固定为下列色板",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ThemeColor.entries.forEach { color ->
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(color.swatch())
+                            .clickable { onPick(color) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (current == color) {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = color.label,
+                                tint = Color.White,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun UpdateStatusDialog(title: String, text: String, confirm: String?, onDismiss: () -> Unit) {
-    cc.ytdttj.noticleaner.ui.glass.NcAlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },
@@ -804,39 +784,44 @@ private fun UpdateStatusDialog(title: String, text: String, confirm: String?, on
 }
 
 @Composable
-private fun StatusRow(label: String, ok: Boolean, action: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.weight(1f))
-        if (ok) {
-            Text("已启用", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelMedium)
-        } else {
-            TextButton(onClick = action) { Text("去开启") }
-        }
-    }
+private fun StatusRow(label: String, ok: Boolean, shape: Shape, onAction: () -> Unit) {
+    SettingRow(
+        title = label,
+        shape = shape,
+        supporting = if (ok) null else "未开启，点击右侧按钮授权",
+        trailing = {
+            if (ok) {
+                Text(
+                    text = "已启用",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Button(onClick = onAction) { Text("去开启") }
+            }
+        },
+    )
 }
 
 @Composable
-private fun AdvancedRow(label: String, desc: String, ok: Boolean, actionLabel: String?, onAction: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(label, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    when (ok) {
-                        true -> "可用"
-                        false -> "不可用"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                )
+private fun AdvancedRow(
+    label: String,
+    desc: String,
+    ok: Boolean,
+    actionLabel: String?,
+    shape: Shape,
+    onAction: () -> Unit,
+) {
+    SettingRow(
+        title = label,
+        supporting = "$desc\n（${if (ok) "可用" else "不可用"}）",
+        shape = shape,
+        trailing = {
+            if (actionLabel != null) {
+                OutlinedButton(onClick = onAction) { Text(actionLabel) }
             }
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-        }
-        if (actionLabel != null) {
-            TextButton(onClick = onAction) { Text(actionLabel) }
-        }
-    }
+        },
+    )
 }
 
 @Composable

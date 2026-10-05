@@ -6,33 +6,28 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 // 1.3.2（P3-7①）：material-icons-extended → core（History/Rule 为 extended 独有，
 // 就近替换为 core 内语义相近图标，debug DEX 体积显著缩小）
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -243,16 +238,12 @@ private val tabs = listOf(
     Tab("settings", "设置", Icons.Filled.Settings),
 )
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MainScaffold() {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route ?: "history"
-    // 1.4.0 Dev 4：界面风格（M3 / 液态玻璃）——底栏与所有页面容器随主题切换
-    val uiThemeName by cc.ytdttj.noticleaner.ServiceLocator.settings.uiTheme.collectAsState(
-        initial = UiTheme.MATERIAL.name,
-    )
-    val glassMode = UiTheme.from(uiThemeName) == UiTheme.GLASS
 
     fun onTabClick(route: String) {
         navController.navigate(route) {
@@ -262,44 +253,22 @@ fun MainScaffold() {
         }
     }
 
-    if (glassMode) {
-        // 液态玻璃（1.4.0 Dev 7）：底栏必须走 floatingBar——它要采样 contentBackdrop（页面真实内容），
-        // 因此绝不能落在 content 采样子树内，否则构成 RenderNode 自引用环 → 原生崩溃。
-        cc.ytdttj.noticleaner.ui.glass.GlassRoot(
-            modifier = Modifier.fillMaxSize(),
-            floatingBar = {
-                cc.ytdttj.noticleaner.ui.glass.GlassBottomBar(
-                    items = tabs.map { cc.ytdttj.noticleaner.ui.glass.GlassNavItem(it.route, it.label, it.icon) },
-                    selectedRoute = currentRoute,
-                    onItemClick = ::onTabClick,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
-            },
-        ) {
-            Scaffold(
-                containerColor = Color.Transparent,
-                contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
-            ) { padding ->
-                MainNavHost(navController = navController, modifier = Modifier.padding(padding))
-            }
-        }
-    } else {
-        Scaffold(
-            bottomBar = {
-                NavigationBar {
-                    tabs.forEach { tab ->
-                        NavigationBarItem(
-                            selected = currentRoute == tab.route,
-                            onClick = { onTabClick(tab.route) },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) },
-                        )
-                    }
+    // M3 Expressive 矮底栏（1.5.1）：比 NavigationBar 更紧凑，选中态由容器色高亮表达
+    Scaffold(
+        bottomBar = {
+            ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                tabs.forEach { tab ->
+                    ShortNavigationBarItem(
+                        selected = currentRoute == tab.route,
+                        onClick = { onTabClick(tab.route) },
+                        icon = { Icon(tab.icon, contentDescription = null) },
+                        label = { Text(tab.label) },
+                    )
                 }
-            },
-        ) { padding ->
-            MainNavHost(navController = navController, modifier = Modifier.padding(padding))
-        }
+            }
+        },
+    ) { padding ->
+        MainNavHost(navController = navController, modifier = Modifier.padding(padding))
     }
 }
 

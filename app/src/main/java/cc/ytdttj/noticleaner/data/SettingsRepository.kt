@@ -87,24 +87,22 @@ class SettingsRepository(private val context: Context) {
     suspend fun historyRetentionCutoff(now: Long): Long =
         now - historyRetentionDays.first().toLong() * 86_400_000L
 
-    // ---- 界面风格（1.4.0 Dev 4）：MATERIAL=Material 3 / GLASS=液态玻璃（Kyant0 Backdrop） ----
-    private val keyUiTheme = stringPreferencesKey("ui_theme")
+    // ---- 外观（1.5.1）：取值分别为 [cc.ytdttj.noticleaner.ui.DarkMode] /
+    //      [cc.ytdttj.noticleaner.ui.ThemeColor] 的 name ----
+    private val keyDarkMode = stringPreferencesKey("dark_mode")
 
-    /** 取值为 [cc.ytdttj.noticleaner.ui.UiTheme] 的 name */
-    val uiTheme: Flow<String> = context.dataStore.data.map { it[keyUiTheme] ?: "MATERIAL" }
+    val darkMode: Flow<String> = context.dataStore.data.map { it[keyDarkMode] ?: "SYSTEM" }
 
-    suspend fun setUiTheme(value: String) {
-        context.dataStore.edit { it[keyUiTheme] = value }
+    suspend fun setDarkMode(value: String) {
+        context.dataStore.edit { it[keyDarkMode] = value }
     }
 
-    // ---- 玻璃清晰度（1.4.0 Dev 5）：FROSTED=磨砂（可读性） / SOFT=柔光（近乎全透明） ----
-    private val keyGlassStyle = stringPreferencesKey("glass_style")
+    private val keyThemeColor = stringPreferencesKey("theme_color")
 
-    /** 取值为 [cc.ytdttj.noticleaner.ui.GlassStyle] 的 name；仅玻璃主题下生效 */
-    val glassStyle: Flow<String> = context.dataStore.data.map { it[keyGlassStyle] ?: "FROSTED" }
+    val themeColor: Flow<String> = context.dataStore.data.map { it[keyThemeColor] ?: "DYNAMIC" }
 
-    suspend fun setGlassStyle(value: String) {
-        context.dataStore.edit { it[keyGlassStyle] = value }
+    suspend fun setThemeColor(value: String) {
+        context.dataStore.edit { it[keyThemeColor] = value }
     }
 
     suspend fun setThreshold(value: Float) {
