@@ -18,7 +18,7 @@ val hasSigning = !signStoreFile.isNullOrBlank()
 
 @Suppress("UnstableApiUsage")
 android {
-    namespace = "cc.ytdttj.noticleaner"
+    namespace = "io.github.vstory.hook.notifyfilter"
     // 1.2.1：libxposed service 102 要求 compileSdk ≥ 37（仅编译期，targetSdk 保持 36）
     // AGP 9 新 DSL：自 API 37 起平台包名带 minor，minorApiLevel=0 ⇒ AGP 去找 platforms/android-37.0
     compileSdk {
@@ -30,7 +30,7 @@ android {
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = "cc.ytdttj.noticleaner"
+        applicationId = "io.github.vstory.hook.notifyfilter"
         // dev 分支 UI 改造（Material 3 Expressive / Material You）：minSdk 提升至 33
         // —— Android 12+ 动态取色全量可用，且无需为低版本维护取色降级路径
         minSdk = 33

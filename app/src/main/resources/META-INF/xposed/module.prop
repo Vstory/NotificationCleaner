@@ -1,3 +1,12 @@
-minApiVersion=102
+# api102 模块标识（LSPosed 读取）
+# minApiVersion=101 最低 API 版本
+# targetApiVersion=102 目标 API 版本
+# staticScope=true 静态作用域（作用域由 scope.list 声明, 无需用户勾选）
+# autoHotReload=true 支持热重载（配合 onHotReloading 返回 true）
+# exceptionMode=protective：hook 落在 system_server 内，hook 内异常必须被框架吞掉并放行原方法——
+#   异常若穿透到 NotificationManagerService / ActiveServices 的调用链，会把系统服务打崩
+minApiVersion=101
 targetApiVersion=102
+staticScope=true
+autoHotReload=true
 exceptionMode=protective
