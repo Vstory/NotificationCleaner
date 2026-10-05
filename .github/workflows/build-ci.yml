@@ -2,8 +2,7 @@ name: Build · CI
 
 # CI 渠道（测试版）：任意分支 push 都出包（debug 变体），发进固定 tag `ci` 的**同一个滚动页**，
 # 产物按时间戳追加、页面永不新增。分支本来就是用来试的 ⇒ 每次提交都该能立刻拿到包。
-# 多分支**并发**共用这一页（不设并发锁，见下），来源分支写在表格里 —— 页面只有一张表，
-# 每个包一行，不再按分支分页。
+# 多分支**并发**共用这一页（不设并发锁，见下）—— 页面只有一张表，每个包一行，不按分支分页。
 # 手动触发可选 debug / release / both：release 与正式版同构建类型（R8 已裁剪），用来验证 minify
 # 之后模块仍能加载；两者同钥 ⇒ 可互相覆盖安装，不会因换签名丢掉 LSPosed 作用域状态。
 # ⚠️ push 侧必须显式写 branches：只写 paths-ignore 时**标签推送也会触发**（release 工作流建的
@@ -369,14 +368,13 @@ jobs:
       #   ① 幂等创建：先查后建，撞上 422（另一运行刚建好）就重查 —— 不再有「同时创建」的竞态；
       #   ② 资产名含 时间戳 + 短 SHA ⇒ 天然唯一，并发上传互不覆盖；--clobber 让重跑覆盖自己；
       #   ③ 正文**不由本步写**（见 Refresh），故不存在「正文互相覆盖」。
-      # 分支名写进 asset 的 **label** 而不是文件名：命名规则与清理正则因此零改动（那三处同步改过
-      #   一次就会静默错），正文重建时读 label 即可在表格里区分来源分支。
+      # ⚠️ **不要给 asset 写 label**：GitHub 在 Release 页面用 label **顶替文件名显示**，打了 label 的
+      #   包会整行变成分支名，看着就像「产物名不对」（2026-10-05 实际踩到，已回滚）。
       - name: Publish to ci release
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_TAG: ${{ steps.target.outputs.tag }}
           REL_NAME: ${{ steps.target.outputs.name }}
-          BRANCH: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -395,16 +393,15 @@ jobs:
           gh release upload "$TARGET_TAG" dist/*.apk --clobber >/dev/null
           echo "已上传：$(ls dist/*.apk | tr '\n' ' ')"
 
-          # 给本 run 的资产打 label = 分支名
+          # 清历史遗留 label（2026-10-05 前打过，会把文件名顶掉）：只挑 label 非空的动手，
+          # 正常状态下零 PATCH。幂等，并发重复清同一份无害。
           gh api --paginate -H "Accept: application/vnd.github+json" \
             "repos/${REPO}/releases/tags/${TARGET_TAG}" \
-            --jq '.assets[] | [.id, .name] | @tsv' \
-          | while IFS=$'\t' read -r id name; do
+            --jq '.assets[] | select((.label // "") != "") | (.id | tostring)' \
+          | while read -r id; do
               [ -n "$id" ] || continue
-              case " ${APKNAME_DEBUG:-} ${APKNAME_RELEASE:-} " in
-                *" $name "*) gh api -X PATCH -H "Accept: application/vnd.github+json" \
-                     "repos/${REPO}/releases/assets/${id}" -f label="$BRANCH" >/dev/null 2>&1 || true ;;
-              esac
+              gh api -X PATCH -H "Accept: application/vnd.github+json" \
+                "repos/${REPO}/releases/assets/${id}" -f label="" >/dev/null 2>&1 || true
             done
 
       # ⚠️ artifact 名必须带 run_number：upload-artifact 拒绝同名 artifact（不是覆盖），而
@@ -454,13 +451,13 @@ jobs:
           done
           [ "$ok" -eq 1 ] || echo "::warning::本次产物在快照中仍不可见，本轮正文可能暂缺本组（下次运行补齐）"
 
-          # 一次快照：label(分支) / 名字 / id / 大小
+          # 一次快照：名字 / id / 大小
           SNAP="$(mktemp)"; SORTED="$(mktemp)"; KEEPKEYS="$(mktemp)"
           gh api --paginate -H "Accept: application/vnd.github+json" \
             "repos/${REPO}/releases/tags/${TARGET_TAG}" \
-            --jq '.assets[] | [(.label // ""), .name, (.id | tostring), (.size | tostring)] | @tsv' \
+            --jq '.assets[] | [.name, (.id | tostring), (.size | tostring)] | @tsv' \
           | awk -F'\t' '
-              { label=$1; name=$2; id=$3; size=$4
+              { name=$1; id=$2; size=$3
                 if (name !~ /\.apk$/) next
                 n=split(name, P, "_")
                 if (n < 5) next
@@ -469,7 +466,7 @@ jobs:
                 if (ts !~ /^[0-9]{8}-[0-9]{4}$/) next
                 if (short !~ /^[0-9a-f]{8}\.apk$/) next
                 sub(/^ci-/, "", var); sub(/\.apk$/, "", short)
-                printf "%s|%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ts, short, name, id, label, vc, var, size
+                printf "%s|%s\t%s\t%s\t%s\t%s\t%s\n", ts, short, name, id, vc, var, size
               }' > "$SNAP"
           echo "匹配命名规则的 asset 共 $(wc -l < "$SNAP") 个"
           sort -r "$SNAP" > "$SORTED"
@@ -486,28 +483,27 @@ jobs:
             echo
             echo "## 📥 最近构建（北京时间，新 → 旧）"
             echo
-            echo "| 时间 | 分支 | 版本 | 变体 | 大小 | 下载 |"
-            echo "|---|---|---|---|---|---|"
+            echo "| 时间 | 版本 | 变体 | 大小 | 下载 |"
+            echo "|---|---|---|---|---|"
           } > "$BODY"
 
           # ⚠️ 渲染/清理一律用 awk -F'\t' 解析，**不要**改回 `IFS=$'\t' read`：
-          #   tab 属于 IFS **空白**字符，read 会合并连续分隔符并剥离首尾 ⇒ 空字段（例如还没打上
-          #   label 的旧 asset）会被整格吞掉，后面字段全体左移，页面静默显示错的分支/变体/大小。
+          #   tab 属于 IFS **空白**字符，read 会合并连续分隔符并剥离首尾 ⇒ 空字段会被整格吞掉，
+          #   后面字段全体左移，页面静默显示错的版本/变体/大小（2026-10-05 实际踩到）。
           #   awk 的 FS 不做这种合并，空字段是真空字段。
           awk -F'\t' -v base="$BASE" \
               -v want1="${APKNAME_DEBUG:-}" -v want2="${APKNAME_RELEASE:-}" '
             NR==FNR { keep[$1]=1; next }
             {
-              key=$1; name=$2; label=$4; vc=$5; var=$6; size=$7
+              key=$1; name=$2; id=$3; vc=$4; var=$5; size=$6
               if (!(key in keep)) next
               ts=key; sub(/\|.*$/, "", ts)
               pretty=substr(ts,1,4)"-"substr(ts,5,2)"-"substr(ts,7,2)" "substr(ts,10,2)":"substr(ts,12,2)
               ver=vc;  sub(/\.[^.]*$/, "", ver)
               code=vc; sub(/^.*\./, "", code)
-              if (label=="") label="?"
               mark = (name==want1 || name==want2) ? "★ " : ""
-              printf "| %s%s | `%s` | %s(%s) | %s | %.1f MB | [下载](%s/%s) |\n", \
-                     mark, pretty, label, ver, code, var, size/1048576, base, name
+              printf "| %s%s | %s(%s) | %s | %.1f MB | [下载](%s/%s) |\n", \
+                     mark, pretty, ver, code, var, size/1048576, base, name
             }' "$KEEPKEYS" "$SORTED" >> "$BODY"
 
           {
