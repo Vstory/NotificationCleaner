@@ -13,16 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.Card
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,6 +37,15 @@ import io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.FloatingActionButton
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class RulesViewModel(
     private val dao: RuleDao,
@@ -113,7 +112,7 @@ fun RulesScreen(
     val hitCounts by vm.ruleHitCounts.collectAsState()
     var tab by remember { mutableStateOf(0) } // 0=过滤规则 1=白名单
 
-    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
+    Scaffold(
         floatingActionButton = {
             FloatingActionButton(onClick = {
                 if (tab == 0) onOpenRuleEdit() else {
@@ -121,15 +120,20 @@ fun RulesScreen(
                     onOpenAppPicker()
                 }
             }) {
-                Icon(Icons.Filled.Add, contentDescription = if (tab == 0) "新建规则" else "添加白名单")
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = if (tab == 0) "新建规则" else "添加白名单",
+                    tint = MiuixTheme.colorScheme.onPrimary,
+                )
             }
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            TabRow(selectedTabIndex = tab) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("过滤规则 (${rules.size})") })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("白名单 (${whitelist.size})") })
-            }
+            TabRow(
+                tabs = listOf("过滤规则 (${rules.size})", "白名单 (${whitelist.size})"),
+                selectedTabIndex = tab,
+                onTabSelected = { tab = it },
+            )
             when (tab) {
                 0 -> {
                     if (rules.isEmpty()) {
@@ -167,9 +171,9 @@ fun RulesScreen(
 @Composable
 private fun RuleSummary(rule: RuleEntity) {
     val cs = rule.conditionSet()
-    Text(rule.appName, style = MaterialTheme.typography.titleSmall)
+    Text(rule.appName, style = MiuixTheme.textStyles.body1)
     if (cs.conditions.isEmpty()) {
-        Text("无条件", style = MaterialTheme.typography.bodySmall)
+        Text("无条件", style = MiuixTheme.textStyles.footnote1)
         return
     }
     Text(
@@ -183,14 +187,14 @@ private fun RuleSummary(rule: RuleEntity) {
                 append("]")
             }
         },
-        style = MaterialTheme.typography.bodySmall,
+        style = MiuixTheme.textStyles.footnote1,
         maxLines = 2,
     )
 }
 
 @Composable
 private fun RuleCard(rule: RuleEntity, hitCount: Int, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 RuleSummary(rule)
@@ -198,8 +202,8 @@ private fun RuleCard(rule: RuleEntity, hitCount: Int, onToggle: (Boolean) -> Uni
                 // 1.4.0 Dev 2：该规则累计过滤的通知条数（NLS 端 + 模块端回流记录）
                 Text(
                     "已过滤 $hitCount 条通知",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.outline,
                 )
             }
             Switch(checked = rule.enabled, onCheckedChange = onToggle)
@@ -210,11 +214,11 @@ private fun RuleCard(rule: RuleEntity, hitCount: Int, onToggle: (Boolean) -> Uni
 
 @Composable
 private fun WhitelistCard(item: WhitelistEntity, onRemove: () -> Unit) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(item.appName, style = MaterialTheme.typography.titleSmall)
-                Text(item.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                Text(item.appName, style = MiuixTheme.textStyles.body1)
+                Text(item.packageName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.outline)
             }
             IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = "移除") }
         }
@@ -228,9 +232,9 @@ private fun EmptyHint(title: String, subtitle: String) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(title, style = MiuixTheme.textStyles.headline2)
         Spacer(Modifier.height(4.dp))
-        Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        Text(subtitle, style = MiuixTheme.textStyles.footnote1)
     }
 }
 
