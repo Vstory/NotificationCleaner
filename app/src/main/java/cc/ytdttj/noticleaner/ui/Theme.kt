@@ -4,9 +4,7 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.MaterialExpressiveTheme
-import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -21,10 +19,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import cc.ytdttj.noticleaner.ServiceLocator
 
-// 外观层（1.5.1 起为 Material 3 Expressive）：
-// - MaterialExpressiveTheme + MotionScheme.expressive()，圆角回归 M3 标准尺度 4/8/12/16/28
+// 外观层：
+// - 圆角回归 M3 标准尺度 4/8/12/16/28
 // - 主题色：动态取色（Material You）为默认，另附固定色板预设
 // - 液态玻璃皮肤已废弃：其开关已从设置页移除，AppTheme 不再下发玻璃模式
+//
+// ⚠️ 不要改用 MaterialExpressiveTheme / MotionScheme.expressive()：material3 1.4.0 已把它们
+// 连同 ExperimentalMaterial3ExpressiveApi 一并收为 Kotlin internal（opt-in 标记本身都不可
+// 访问），完整 Expressive 组件集只在 1.5.0-alpha 线。分组连体列表、M3E 圆角尺度、
+// ShortNavigationBar 均不依赖 Expressive 主题，照常可用。
 
 /** 深浅色模式 */
 enum class DarkMode(val label: String) {
@@ -201,7 +204,6 @@ enum class GlassStyle(val label: String) {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
     val darkName by ServiceLocator.settings.darkMode.collectAsState(initial = DarkMode.SYSTEM.name)
@@ -219,9 +221,8 @@ fun AppTheme(content: @Composable () -> Unit) {
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         else -> presetFor(color).let { if (dark) it.dark else it.light }
     }
-    MaterialExpressiveTheme(
+    MaterialTheme(
         colorScheme = scheme,
-        motionScheme = MotionScheme.expressive(),
         shapes = AppShapes,
         content = content,
     )

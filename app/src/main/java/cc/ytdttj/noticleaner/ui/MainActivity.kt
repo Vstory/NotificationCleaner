@@ -15,7 +15,6 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -238,7 +237,7 @@ private val tabs = listOf(
     Tab("settings", "设置", Icons.Filled.Settings),
 )
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScaffold() {
     val navController = rememberNavController()
@@ -253,7 +252,7 @@ fun MainScaffold() {
         }
     }
 
-    // M3 Expressive 矮底栏（1.5.1）：比 NavigationBar 更紧凑，选中态由容器色高亮表达
+    // 矮底栏（ShortNavigationBar，material3 1.4.0 起为稳定 API）：比 NavigationBar 更紧凑，选中态由容器色高亮表达
     Scaffold(
         bottomBar = {
             ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
