@@ -12,7 +12,7 @@
 | 版本 | `2.1.2` (72) |
 | UI 栈 | miuix 0.9.4（`-android` 变体）；material3 仅剩 19 处残留 |
 | 工具链 | AGP 9.4.1 · Kotlin 2.4.20 · KSP 2.3.9 · Gradle 9.7.1 · JDK 21 · compileSdk 37 |
-| CI | `#20` ~ `#27` 全绿（一屏一提交，每次 push 出 debug 包） |
+| CI | `#20` ~ `#28`（一屏一提交，每次 push 出 debug 包） |
 
 ## 进度
 
@@ -47,3 +47,4 @@
 - **miuix 无日期选择器**：`HistoryScreen` 的日期筛选是 `OverlayDialog` + 三列 `NumberPicker` 自建。
 - **不要加 `miuix-nav` 依赖**：底栏是 `miuix-ui` 的 `NavigationBar`；`miuix-nav` 是替代 androidx.navigation 的整套导航库。
 - **miuix 依赖必须带 `-android` 后缀**：那是发布给 AndroidX Compose 工程的变体；不带后缀会拉进 CMP 运行时并冲突。
+- **不要给 miuix 用 `ColorSchemeMode.MonetSystem`**：miuix 的层次感靠中性底色的明度差（`surface` 纯黑 → `surfaceContainer` `#242424` → `secondaryContainer` `#434343`），Monet 会把这些角色整盘染上系统主题色 —— 卡片与背景糊成一片，`TextField`（默认填充 `secondaryContainer`）突兀跳色。用 `ColorSchemeMode.System`（出厂固定色板，仅跟随深浅色）。
