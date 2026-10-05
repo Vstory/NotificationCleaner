@@ -59,6 +59,20 @@ class SettingsRepository(private val context: Context) {
     /** 权限初始化流程已完成（1.1.8 首次引入；默认 false → 老版本升级后也会走一遍初始化） */
     val onboardingDone: Flow<Boolean> = context.dataStore.data.map { it[keyOnboardingDone] ?: false }
 
+    // ---- 通知发送权限（1.2.2）：系统授权框只自动弹一次 ----
+    private val keyNotifPermAsked = booleanPreferencesKey("notif_perm_asked")
+
+    /**
+     * 是否已自动发起过 POST_NOTIFICATIONS 申请。
+     * 拒绝后系统框不会自动再弹（Android 13+ 每次调用都会重新弹出），
+     * 否则用户每次冷启动都被问一遍；后续引导改走「权限未授予」弹窗跳应用通知设置。
+     */
+    val notifPermissionAsked: Flow<Boolean> = context.dataStore.data.map { it[keyNotifPermAsked] ?: false }
+
+    suspend fun setNotifPermissionAsked() {
+        context.dataStore.edit { it[keyNotifPermAsked] = true }
+    }
+
     // ---- 历史通知保留天数（Dev 6）：监控式滚动，最新的顶掉 N 天前的 ----
     private val keyHistoryRetentionDays = intPreferencesKey("history_retention_days")
 
