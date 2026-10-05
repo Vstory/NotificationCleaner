@@ -54,7 +54,7 @@ internal class ModuleLogSink {
             try {
                 ctx.contentResolver.insert(ModuleLogProvider.CONTENT_URI, values)
             } catch (t: Throwable) {
-                android.util.Log.w("NCWatch", "module log insert failed: $t")
+                android.util.Log.w("NfWatch", "module log insert failed: $t")
             }
         }
     }
@@ -83,7 +83,7 @@ internal class ModuleLogSink {
                 ctx.registerReceiver(receiver, filter)
             }
         } catch (t: Throwable) {
-            android.util.Log.w("NCWatch", "module log flush receiver register failed: $t")
+            android.util.Log.w("NfWatch", "module log flush receiver register failed: $t")
         }
     }
 

@@ -112,7 +112,9 @@ jobs:
       # 命名：<前缀>_<版本>.<code>_<时间>_ci-<变体>_<短号>.apk
       #   · 渠道段 = `ci-debug` / `ci-release`，下载到手要一眼看出这不是正式包；
       #     正式包见 release 工作流产出的 `<前缀>.<版本>.<code>.release.apk`。
-      #   · 前缀固定为 NotiCleaner：应用名是中文（通知净化），进不了文件名/URL。
+      #   · 前缀固定为 NotifyFilter（与包名 notifyfilter 一致）：应用名是中文（通知净化），进不了文件名/URL。
+      #   · ⚠️ 前缀三处同源，改名必须同改：本处、build-release.yml 的 PREFIX、UpdateViewModel 拼
+      #      应用内更新下载名的 apkName —— 漏改最后一处 = 更新 404，且要到用户点更新才暴露。
       #   · ⚠️ 圆括号在 URL 里需转义，而下载链接由资产名拼出 ⇒ 名里一律用 `-`/`.`，不得出现括号。
       - name: Resolve APK name
         id: target
@@ -121,7 +123,7 @@ jobs:
           SHORT: ${{ steps.info.outputs.short }}
           WANT: ${{ inputs.variant }}
         run: |
-          PREFIX="NotiCleaner"
+          PREFIX="NotifyFilter"
           VER="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -1)"
           CODE="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts | head -1)"
           if [ -z "$VER" ] || [ -z "$CODE" ]; then
@@ -409,7 +411,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: NotiCleaner-${{ steps.target.outputs.variant_tag }}-${{ steps.info.outputs.ts }}-${{ steps.info.outputs.short }}-${{ github.run_number }}
+          name: NotifyFilter-${{ steps.target.outputs.variant_tag }}-${{ steps.info.outputs.ts }}-${{ steps.info.outputs.short }}-${{ github.run_number }}
           path: dist/*.apk
           if-no-files-found: error
 
@@ -511,7 +513,7 @@ jobs:
             echo "---"
             echo "★ = 本次构建（[${RUN_ID}](${SERVER}/${REPO}/actions/runs/${RUN_ID})）"
             echo
-            echo "文件名规则 = \`<前缀>_<版本>.<code>_<时间>_ci-<变体>_<短号>.apk\`（前缀固定 NotiCleaner，变体=debug/release，时间=北京时间，短号=SHA 前 8 位）。按时间戳追加、不覆盖旧包，本页只保留最近 6 组。"
+            echo "文件名规则 = \`<前缀>_<版本>.<code>_<时间>_ci-<变体>_<短号>.apk\`（前缀固定 NotifyFilter，变体=debug/release，时间=北京时间，短号=SHA 前 8 位）。按时间戳追加、不覆盖旧包，本页只保留最近 6 组。"
             echo
             echo "- 各包共用同一把固定钥（${SIGN_SCHEMES:-未读取到}），可互相覆盖安装。"
             echo "- debug 包调试日志最全（由 \`BuildConfig.DEBUG\` 在编译期决定），排障优先用它；release 包 R8 已裁剪、与正式版同构建类型，可用来验证 minify/keep 规则。"

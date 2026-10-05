@@ -82,7 +82,7 @@ class UpdateViewModel : ViewModel() {
         // 版本名去空格（上游 Dev 版形如 "1.3.2 Dev 1" → "1.3.2Dev1"）：tag 与资产名都不允许空格
         val ver = release.versionName.replace(" ", "")
         val tag = "v$ver.${release.versionCode}"
-        val apkName = "NotiCleaner.$ver.${release.versionCode}.release.apk"
+        val apkName = "NotifyFilter.$ver.${release.versionCode}.release.apk"
         val url = "${BuildConfig.UPDATE_APK_BASE}/$tag/$apkName"
         val dest = File(appCtx.getExternalFilesDir(null), "update/$apkName")
         _state.value = UpdateState.Downloading(release, 0)
@@ -149,7 +149,7 @@ class UpdateViewModel : ViewModel() {
                 conn.connectTimeout = 15_000
                 conn.readTimeout = 30_000
                 conn.instanceFollowRedirects = false
-                conn.setRequestProperty("User-Agent", "NotiCleaner/${BuildConfig.VERSION_NAME}")
+                conn.setRequestProperty("User-Agent", "NotifyFilter/${BuildConfig.VERSION_NAME}")
                 when (conn.responseCode) {
                     in 200..299 -> {
                         val total = conn.contentLengthLong

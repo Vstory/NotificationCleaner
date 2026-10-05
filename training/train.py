@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NotificationCleaner 广告通知分类器 —— PC 端预训练脚本（参考 Notice 仓库方案重构）
+NotifyFilter 广告通知分类器 —— PC 端预训练脚本（参考 Notice 仓库方案重构）
 ================================================================================
 
 方案（与 github.com/Night-stars-1/Notice 的 ml/ 管线同源）:
@@ -465,7 +465,7 @@ def write_report(out_dir: Path, args, real_stats, sms_eval, real_eval, scan, qua
     lines = []
     ap = lines.append
     ap("=" * 62)
-    ap("NotificationCleaner 预训练报告（公共语料 + 真实通知）")
+    ap("NotifyFilter 预训练报告（公共语料 + 真实通知）")
     ap("=" * 62)
     ap(f"时间:         {datetime.now().isoformat(timespec='seconds')}")
     ap(f"真实数据:     {', '.join(extra_paths) or '（无）'}")
@@ -504,7 +504,7 @@ def write_report(out_dir: Path, args, real_stats, sms_eval, real_eval, scan, qua
 
 
 def main():
-    ap = argparse.ArgumentParser(description="NotificationCleaner 广告通知分类器预训练脚本")
+    ap = argparse.ArgumentParser(description="NotifyFilter 广告通知分类器预训练脚本")
     ap.add_argument("--extra", action="append", default=[], help="真实通知 CSV（可重复传入）")
     ap.add_argument("--extra-weight", type=float, default=30.0, help="真实通知样本权重（对 80 万公共语料保持话语权）")
     ap.add_argument("--title-col", default=None)

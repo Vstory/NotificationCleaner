@@ -67,7 +67,7 @@ import androidx.compose.ui.unit.DpOffset
 
 /**
  * 液态玻璃设计系统（1.4.0 Dev 7，方案 C，基于 Kyant0 Backdrop 1.0.6）：
- * - 所有界面的容器组件（卡片/底栏/顶栏/对话框/输入框/按钮/底弹层）经由 Nc* 包装，
+ * - 所有界面的容器组件（卡片/底栏/顶栏/对话框/输入框/按钮/底弹层）经由 Nf* 包装，
  *   M3 模式渲染原样 Material 3，玻璃模式渲染液态玻璃——同一份布局代码、零功能差异
  * - 玻璃实现：backdrop 采样 → AGSL 折射 → RenderEffect 模糊 → 高光描边 + 半透明着色
  * - Dev 7 双采样源（分离式，详见 [GlassRoot]）：
@@ -210,7 +210,7 @@ fun Modifier.glassSurface(
  * 原生崩溃（SIGSEGV，Java 无法捕获，日志导出拿不到）。
  *
  * 引用方向（改本文件前先画一遍，确认无环）：
- * - wallpaperBackdrop ← 页面内玻璃卡片（NcCard 等读 [LocalGlassBackdrop]）
+ * - wallpaperBackdrop ← 页面内玻璃卡片（NfCard 等读 [LocalGlassBackdrop]）
  * - contentBackdrop   ← 悬浮底栏（floatingBar，读 [LocalContentBackdrop]）
  * - contentRN 录制 = 纯色底 + 页面（含卡片）；卡片引用的是**另一个**独立采样源，
  *   且壁纸不在 contentRN 子树内（分离式，刻意不嵌套采样层）→ 无环
@@ -284,11 +284,11 @@ fun GlassWallpaper(modifier: Modifier = Modifier) {
     }
 }
 
-// ============================ Nc* 双皮肤容器组件 ============================
+// ============================ Nf* 双皮肤容器组件 ============================
 
 /** 卡片：M3 Card / 玻璃卡片（onClick 可选，两模式语义一致） */
 @Composable
-fun NcCard(
+fun NfCard(
     modifier: Modifier = Modifier,
     shape: Shape = GlassCardShape,
     onClick: (() -> Unit)? = null,
@@ -313,7 +313,7 @@ fun NcCard(
 
 /** 脚手架：玻璃模式下容器透明（露出壁纸），且去掉底部导航栏 inset——内容直达屏幕底部 */
 @Composable
-fun NcScaffold(
+fun NfScaffold(
     modifier: Modifier = Modifier,
     topBar: @Composable () -> Unit = {},
     floatingActionButton: @Composable () -> Unit = {},
@@ -354,7 +354,7 @@ fun NcScaffold(
 /** 顶栏：玻璃模式下透明容器（浮在壁纸上） */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NcTopAppBar(
+fun NfTopAppBar(
     title: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
@@ -378,7 +378,7 @@ fun NcTopAppBar(
 
 /** 对话框：玻璃模式下磨砂半透明容器（独立窗口无法采样主窗口，降级磨砂） */
 @Composable
-fun NcAlertDialog(
+fun NfAlertDialog(
     onDismissRequest: () -> Unit,
     title: @Composable (() -> Unit)? = null,
     text: @Composable (() -> Unit)? = null,
@@ -409,7 +409,7 @@ fun NcAlertDialog(
 /** 底部弹层：玻璃模式下磨砂半透明 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NcModalBottomSheet(
+fun NfModalBottomSheet(
     onDismissRequest: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -426,7 +426,7 @@ fun NcModalBottomSheet(
 
 /** 输入框：玻璃模式下磨砂填充胶囊 */
 @Composable
-fun NcOutlinedTextField(
+fun NfOutlinedTextField(
     value: String,
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -473,7 +473,7 @@ fun NcOutlinedTextField(
 
 /** 主按钮：玻璃模式下磨砂填充 + 主题色文字 */
 @Composable
-fun NcFilledButton(
+fun NfFilledButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
@@ -497,7 +497,7 @@ fun NcFilledButton(
 
 /** 描边按钮：玻璃模式下磨砂填充 */
 @Composable
-fun NcOutlinedButton(
+fun NfOutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,

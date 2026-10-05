@@ -14,5 +14,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "NotificationCleaner"
+rootProject.name = "NotifyFilter"
 include(":app")

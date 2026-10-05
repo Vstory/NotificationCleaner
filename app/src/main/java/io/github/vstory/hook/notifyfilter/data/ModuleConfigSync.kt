@@ -122,7 +122,7 @@ class ModuleConfigSync(
                     "delta 已推送到模块：${bytes.size}B",
                 )
             }.onFailure {
-                android.util.Log.w("NCWatch", "module delta push failed: $it")
+                android.util.Log.w("NfWatch", "module delta push failed: $it")
                 io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
                     io.github.vstory.hook.notifyfilter.diagnostics.LogModules.MODEL,
                     "✗ delta 推送失败: $it（模块端仍用旧/基线模型打分）",

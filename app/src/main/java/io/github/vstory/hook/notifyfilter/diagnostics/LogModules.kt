@@ -79,13 +79,13 @@ object LogModules {
      * logcat 缓冲通常不足 24 小时，只作补充；24 小时覆盖由环形日志保证。
      */
     fun logcatTagFor(module: String): String? = when (module) {
-        NLS -> "NCWatch"
-        HOOK -> "NotiCleaner"
+        NLS -> "NfWatch"
+        HOOK -> "NotifyFilter"
         UPDATE -> "UpdateVM"
         MODEL -> "ModelRepository"
         else -> null
     }
 
     /** logcat 抓取的全部 tag（其它一律 *:S 静默，避免导出里混进系统噪声） */
-    val LOGCAT_TAGS: List<String> = listOf("NCWatch", "NotiCleaner", "UpdateVM", "ModelRepository")
+    val LOGCAT_TAGS: List<String> = listOf("NfWatch", "NotifyFilter", "UpdateVM", "ModelRepository")
 }

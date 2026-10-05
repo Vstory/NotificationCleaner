@@ -17,7 +17,7 @@ class NotiGuardService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         connected = true
-        android.util.Log.i("NCWatch", "noti-guard accessibility connected → check NLS")
+        android.util.Log.i("NfWatch", "noti-guard accessibility connected → check NLS")
         runCatching {
             if (CleanerListenerService.isListenerEnabled(this) &&
                 !CleanerListenerService.isListenerConnected()
@@ -33,7 +33,7 @@ class NotiGuardService : AccessibilityService() {
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         connected = false
-        android.util.Log.i("NCWatch", "noti-guard accessibility unbound")
+        android.util.Log.i("NfWatch", "noti-guard accessibility unbound")
         return super.onUnbind(intent)
     }
 

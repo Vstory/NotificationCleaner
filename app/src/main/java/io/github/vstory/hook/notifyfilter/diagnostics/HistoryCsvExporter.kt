@@ -28,7 +28,7 @@ object HistoryCsvExporter {
         val rows = ServiceLocator.db.notificationDao().exportAll()
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-        val file = File(dir, "NotiCleaner-历史通知-$stamp.csv")
+        val file = File(dir, "NotifyFilter-历史通知-$stamp.csv")
         file.bufferedWriter(charset = Charsets.UTF_8).use { w ->
             w.write("\ufeff") // BOM
             w.appendLine(HEADER.joinToString(",") { escape(it) })

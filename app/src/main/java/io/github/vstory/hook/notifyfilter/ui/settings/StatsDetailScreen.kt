@@ -209,7 +209,7 @@ fun StatsDetailScreen(
     val unlearnedCount = items.size - learnedCount
 
     if (confirmAll) {
-        io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+        io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
             onDismissRequest = { confirmAll = false },
             title = { Text("重新学习 $learnedCount 条已学习通知？") },
             text = {
@@ -243,12 +243,12 @@ fun StatsDetailScreen(
         }
     val selected by vm.selected.collectAsState()
 
-    io.github.vstory.hook.notifyfilter.ui.glass.NcScaffold(
+    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
         snackbarHost = {
             Box(Modifier.padding(bottom = snackbarBottomPadding)) { SnackbarHost(snackbar) }
         },
         topBar = {
-            io.github.vstory.hook.notifyfilter.ui.glass.NcTopAppBar(
+            io.github.vstory.hook.notifyfilter.ui.glass.NfTopAppBar(
                 title = { Text(if (mode is StatsMode.Filtered) "已过滤的通知" else "已学习的通知") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
@@ -276,7 +276,7 @@ fun StatsDetailScreen(
             LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(12.dp)) {
                 items(items, key = { it.id }) { n ->
                     // Dev 14：条目可点击 → 打开与历史页同款的详情弹层（可重新学习/取消学习）
-                    io.github.vstory.hook.notifyfilter.ui.glass.NcCard(
+                    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(
                         Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { vm.select(n) },
                     ) {
                         Column(Modifier.padding(12.dp)) {
@@ -308,7 +308,7 @@ fun StatsDetailScreen(
     // Dev 14：点击条目 → 与历史页一致的详情弹层（重新学习 / 取消学习 / 跳转通道）
     selected?.let { n ->
         val context = LocalContext.current
-        io.github.vstory.hook.notifyfilter.ui.glass.NcModalBottomSheet(onDismissRequest = { vm.select(null) }) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfModalBottomSheet(onDismissRequest = { vm.select(null) }) {
             NotificationDetail(
                 n = n,
                 onJumpChannel = {

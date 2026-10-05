@@ -23,7 +23,7 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 // - 阶段一：Material You 动态取色 + 统一大圆角 Shapes（Material 3 Expressive 基础升级）
 // - 1.4.0 Dev 4（方案 C）：双主题——MATERIAL / GLASS（液态玻璃，Kyant0 Backdrop），
 //   持久化于 DataStore（SettingsRepository.uiTheme），设置页顶部可切换
-// - 玻璃模式通过 [LocalGlassMode] 全局下发，所有界面经由 ui/glass/ 的 Nc* 组件
+// - 玻璃模式通过 [LocalGlassMode] 全局下发，所有界面经由 ui/glass/ 的 Nf* 组件
 //   在同一份布局代码上渲染 M3 或液态玻璃两种皮肤
 
 /** 界面风格：name 持久化于 DataStore */
@@ -46,7 +46,7 @@ enum class GlassStyle(val label: String) {
     }
 }
 
-/** 当前是否处于液态玻璃模式（ui/glass/ 的 Nc* 组件据此选择渲染皮肤） */
+/** 当前是否处于液态玻璃模式（ui/glass/ 的 Nf* 组件据此选择渲染皮肤） */
 val LocalGlassMode = staticCompositionLocalOf { false }
 
 /** 当前玻璃清晰度（ui/glass/ 的玻璃配方据此调整着色与模糊强度） */

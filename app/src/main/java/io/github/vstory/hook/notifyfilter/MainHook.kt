@@ -267,7 +267,7 @@ class MainHook : XposedModule() {
     }
 
     companion object {
-        private const val TAG = "NotiCleaner"
+        private const val TAG = "NotifyFilter"
         private val TARGET = BuildConfig.APPLICATION_ID
         private const val AS_CLASS = "com.android.server.am.ActiveServices"
         private const val NMS_CLASS = "com.android.server.notification.NotificationManagerService"

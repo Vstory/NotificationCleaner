@@ -309,7 +309,7 @@ fun SettingsScreen(
             .padding(16.dp),
     ) {
         // ---- 界面风格切换（1.4.0 Dev 4）：液态玻璃 / Material 3 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("界面风格", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -329,7 +329,7 @@ fun SettingsScreen(
 
         // ---- 玻璃清晰度（1.4.0 Dev 5）：仅玻璃主题下显示 ----
         if (uiThemeMode == io.github.vstory.hook.notifyfilter.ui.UiTheme.GLASS.name) {
-            io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+            io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
                     Text("玻璃清晰度", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(4.dp))
@@ -350,7 +350,7 @@ fun SettingsScreen(
         }
 
         // ---- 拦截模式 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("拦截模式", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -362,14 +362,14 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
 
         // ---- 过滤阈值 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("过滤阈值", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text("AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。", style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedTextField(
+                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedTextField(
                         value = thresholdInput,
                         onValueChange = { s ->
                             // 仅编辑本地输入，点击"保存"后才生效
@@ -402,7 +402,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
 
         // ---- 统计 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("统计", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
@@ -426,7 +426,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(12.dp))
 
         // ---- 多任务隐藏 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("在多任务界面隐藏", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -442,7 +442,7 @@ fun SettingsScreen(
 
         // ---- 权限检查（1.3.0 beta2：原「后台保活」，高级项折叠） ----
         var permAdvancedOpen by remember { mutableStateOf(false) }
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Text("权限检查", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
@@ -520,7 +520,7 @@ fun SettingsScreen(
         val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
             viewModel(key = "update", factory = viewModelFactory { initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() } })
         val updateState by updateVm.state.collectAsState()
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -530,7 +530,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedButton(
+                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(
                         enabled = updateState !is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking,
                         onClick = { updateVm.checkUpdate() },
                     ) { Text("检查") }
@@ -544,7 +544,7 @@ fun SettingsScreen(
         var diagExporting by remember { mutableStateOf(false) }
         var diagMsg by remember { mutableStateOf<String?>(null) }
         Spacer(Modifier.height(12.dp))
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -554,7 +554,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedButton(
+                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(
                         enabled = !diagExporting,
                         onClick = {
                             diagExporting = true
@@ -614,7 +614,7 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedButton(
+                        io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(
                             enabled = !csvExporting,
                             onClick = {
                                 csvExporting = true
@@ -671,7 +671,7 @@ fun SettingsScreen(
         // ---- 高级功能（1.3.0 beta2：默认折叠） ----
         var advancedOpen by remember { mutableStateOf(false) }
         var confirmResetModel by remember { mutableStateOf(false) }
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth()) {
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
                 Row(
                     Modifier.fillMaxWidth().clickable { advancedOpen = !advancedOpen },
@@ -694,9 +694,9 @@ fun SettingsScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(modelInfo, style = MaterialTheme.typography.bodySmall)
                     Spacer(Modifier.height(8.dp))
-                    io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedButton(onClick = { confirmResetModel = true }) { Text("重置模型（回到预训练基线）") }
+                    io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(onClick = { confirmResetModel = true }) { Text("重置模型（回到预训练基线）") }
                     if (confirmResetModel) {
-                        io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+                        io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
                             onDismissRequest = { confirmResetModel = false },
                             title = { Text("确认重置模型？") },
                             text = { Text("将清除所有学习标注，模型回到预训练基线。已拦截统计不受影响，此操作不可撤销。") },
@@ -711,7 +711,7 @@ fun SettingsScreen(
         }
         Spacer(Modifier.height(12.dp))
         // ---- 参考开源项目（Dev 17）：高级功能块下方，跳转开源项目列表 ----
-        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(
+        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(
             Modifier.fillMaxWidth().clickable { onOpenOpenSource() },
         ) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -743,14 +743,14 @@ fun SettingsScreen(
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Error -> UpdateStatusDialog(
                 title = "更新失败", text = s.message, confirm = "知道了", onDismiss = { updateVm.reset() },
             )
-            is io.github.vstory.hook.notifyfilter.update.UpdateState.Available -> io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+            is io.github.vstory.hook.notifyfilter.update.UpdateState.Available -> io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
                 onDismissRequest = { updateVm.reset() },
                 title = { Text("发现新版本 v${s.release.versionName}") },
                 text = { Column { Text(s.release.notes.ifBlank { "无更新说明" }, style = MaterialTheme.typography.bodyMedium) } },
                 confirmButton = { TextButton(onClick = { updateVm.startDownload(s.release) }) { Text("立即更新") } },
                 dismissButton = { TextButton(onClick = { updateVm.reset() }) { Text("稍后再说") } },
             )
-            is io.github.vstory.hook.notifyfilter.update.UpdateState.Downloading -> io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+            is io.github.vstory.hook.notifyfilter.update.UpdateState.Downloading -> io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
                 onDismissRequest = {},
                 title = { Text("正在下载 v${s.release.versionName}") },
                 text = {
@@ -765,7 +765,7 @@ fun SettingsScreen(
                 },
                 confirmButton = { TextButton(onClick = { updateVm.cancelDownload() }) { Text("取消") } },
             )
-            is io.github.vstory.hook.notifyfilter.update.UpdateState.ReadyToInstall -> io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+            is io.github.vstory.hook.notifyfilter.update.UpdateState.ReadyToInstall -> io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
                 onDismissRequest = { updateVm.reset() },
                 title = { Text("下载完成") },
                 text = { Text("点击「安装」打开系统安装器升级到 v${s.release.versionName}。") },
@@ -777,7 +777,7 @@ fun SettingsScreen(
 
         // ---- 高级保活执行结果弹窗 ----
         execResult?.let { result ->
-            io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+            io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
                 onDismissRequest = { vm.dismissExecResult() },
                 title = { Text("保活命令执行结果") },
                 text = {
@@ -793,7 +793,7 @@ fun SettingsScreen(
 
 @Composable
 private fun UpdateStatusDialog(title: String, text: String, confirm: String?, onDismiss: () -> Unit) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NcAlertDialog(
+    io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },

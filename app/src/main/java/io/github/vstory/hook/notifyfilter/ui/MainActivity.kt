@@ -173,7 +173,7 @@ class MainActivity : ComponentActivity() {
         if (checkPermissions(this).listenerEnabled) {
             lifecycleScope.launch(Dispatchers.IO) {
                 if (!CleanerListenerService.isListenerConnected()) {
-                    android.util.Log.i("NCWatch", "app entry → rebind requested")
+                    android.util.Log.i("NfWatch", "app entry → rebind requested")
                     CleanerListenerService.requestRebindIfEnabled(this@MainActivity)
                 }
             }

@@ -164,7 +164,7 @@ class CleanerListenerService : NotificationListenerService() {
         super.onCreate()
         activeInstance = this
         initScope(this)
-        android.util.Log.i("NCWatch", "listener onCreate uptime=${android.os.SystemClock.elapsedRealtime()}")
+        android.util.Log.i("NfWatch", "listener onCreate uptime=${android.os.SystemClock.elapsedRealtime()}")
         val scope = appScope ?: return
         scope.launch {
             // Dev 6：保留天数可调（默认 7 天），按 postTime 清理
@@ -179,7 +179,7 @@ class CleanerListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         listenerConnected = true
-        android.util.Log.i("NCWatch", "listener CONNECTED")
+        android.util.Log.i("NfWatch", "listener CONNECTED")
         io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
             io.github.vstory.hook.notifyfilter.diagnostics.LogModules.NLS, "监听已连接",
         )
@@ -188,7 +188,7 @@ class CleanerListenerService : NotificationListenerService() {
             val keys = pendingCancels.toList()
             pendingCancels.removeAll(keys)
             keys.forEach { runCatching { cancelNotification(it) } }
-            android.util.Log.i("NCWatch", "pendingCancels flushed: ${keys.size}")
+            android.util.Log.i("NfWatch", "pendingCancels flushed: ${keys.size}")
         }
         // 1.4.0 Dev 15：监听恢复 → 撤下"监听已失效"提醒
         runCatching { ListenerAlertNotifier.cancel(this) }
@@ -196,7 +196,7 @@ class CleanerListenerService : NotificationListenerService() {
         // 1.2.1：补扫走独立慢速通道（backfillDispatcher），不与实时通知抢并发
         runCatching {
             val active = activeNotifications
-            android.util.Log.i("NCWatch", "backfill scan: ${active?.size ?: -1} active notifications")
+            android.util.Log.i("NfWatch", "backfill scan: ${active?.size ?: -1} active notifications")
             active?.forEach { sbn -> dispatch(sbn, fromBackfill = true) }
         }
         KeepAliveService.start(this)
@@ -205,7 +205,7 @@ class CleanerListenerService : NotificationListenerService() {
     override fun onListenerDisconnected() {
         // 1.1.11 修复：断线必须先落标志，否则看门狗用实例存在误判"已连接"，永远不会自愈重绑
         listenerConnected = false
-        android.util.Log.w("NCWatch", "listener DISCONNECTED — requesting rebind")
+        android.util.Log.w("NfWatch", "listener DISCONNECTED — requesting rebind")
         io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
             io.github.vstory.hook.notifyfilter.diagnostics.LogModules.NLS, "✗ 监听断线 → 请求重绑",
         )
@@ -219,7 +219,7 @@ class CleanerListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() {
-        android.util.Log.w("NCWatch", "listener onDestroy")
+        android.util.Log.w("NfWatch", "listener onDestroy")
         io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
             io.github.vstory.hook.notifyfilter.diagnostics.LogModules.NLS, "监听服务销毁",
         )
@@ -238,7 +238,7 @@ class CleanerListenerService : NotificationListenerService() {
         if (sbn.packageName == SELF_PACKAGE) return
         // 1.3.2（P3-2）：每通知一次的日志在 release 下门控，省 logd 写入与字符串分配
         if (io.github.vstory.hook.notifyfilter.BuildConfig.DEBUG) {
-            android.util.Log.i("NCWatch", "posted pkg=${sbn.packageName} connected=$listenerConnected backfill=$fromBackfill")
+            android.util.Log.i("NfWatch", "posted pkg=${sbn.packageName} connected=$listenerConnected backfill=$fromBackfill")
         }
         val notification: Notification = sbn.notification ?: return
         if (notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
@@ -255,7 +255,7 @@ class CleanerListenerService : NotificationListenerService() {
             .distinct().joinToString(" ").ifEmpty { content }
         if (title.isEmpty() && text.isEmpty()) return
 
-        // 1.4.0 Dev 12：环形日志全量留痕——此前 release 下 NCWatch logcat 门控，
+        // 1.4.0 Dev 12：环形日志全量留痕——此前 release 下 NfWatch logcat 门控，
         // 事件无法事后归因（排查时 logcat/内存 trace 均已滚动丢失）
         io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
             io.github.vstory.hook.notifyfilter.diagnostics.LogModules.PIPE,
@@ -277,7 +277,7 @@ class CleanerListenerService : NotificationListenerService() {
             if (pm?.isInteractive == false) {
                 pm.newWakeLock(
                     android.os.PowerManager.PARTIAL_WAKE_LOCK,
-                    "NotiCleaner:handle",
+                    "NotifyFilter:handle",
                 )?.acquire(10_000)
             }
         }
@@ -387,14 +387,14 @@ class CleanerListenerService : NotificationListenerService() {
             // 清除失败（时机过早等）也记入待取消队列，重连时补撤（1.1.11 兜底）
             val ok = runCatching { cancelNotification(sbn.key) }.isSuccess
             if (!ok) {
-                android.util.Log.w("NCWatch", "cancel failed, queued: $decision ${sbn.key.takeLast(12)}")
+                android.util.Log.w("NfWatch", "cancel failed, queued: $decision ${sbn.key.takeLast(12)}")
                 io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
                     io.github.vstory.hook.notifyfilter.diagnostics.LogModules.PIPE,
                     "✗ 清除通知失败 decision=$decision key=${sbn.key.takeLast(12)}",
                 )
                 pendingCancels.add(sbn.key)
             } else {
-                android.util.Log.i("NCWatch", "filtered+$decision p=$probability")
+                android.util.Log.i("NfWatch", "filtered+$decision p=$probability")
             }
         }
 

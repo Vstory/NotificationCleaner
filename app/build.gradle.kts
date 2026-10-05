@@ -90,7 +90,7 @@ android {
         // 回写（versionCode/versionName/notes/sha256）。⚠️ 回写与本处读取必须同仓库同分支，
         // 否则客户端永远看不到新版本。
         // 下载 URL 按版本号拼（与工作流的 tag / 资产名一一对应）：
-        //   {base}/v{versionName 去空格}.{versionCode}/NotiCleaner.{同}.{code}.release.apk
+        //   {base}/v{versionName 去空格}.{versionCode}/NotifyFilter.{同}.{code}.release.apk
         buildConfigField("String", "UPDATE_LATEST",
             "\"https://raw.githubusercontent.com/Vstory/NotificationCleaner/main/latest.json\"")
         buildConfigField("String", "UPDATE_APK_BASE",

@@ -118,7 +118,7 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
 
     // 1.4.0 Dev 13：外层 MainScaffold 已应用状态栏 inset，此处必须清零，
     // 否则顶部 inset 双叠加 → 筛选按钮上方一大片空白
-    io.github.vstory.hook.notifyfilter.ui.glass.NcScaffold(
+    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
         snackbarHost = {
             Box(Modifier.padding(bottom = snackbarBottomPadding)) { SnackbarHost(snackbar) }
         },
@@ -195,7 +195,7 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
         }
 
         selected?.let { n ->
-            io.github.vstory.hook.notifyfilter.ui.glass.NcModalBottomSheet(onDismissRequest = { vm.select(null) }) {
+            io.github.vstory.hook.notifyfilter.ui.glass.NfModalBottomSheet(onDismissRequest = { vm.select(null) }) {
                 NotificationDetail(
                     n = n,
                     onJumpChannel = {
@@ -309,7 +309,7 @@ private fun renderAppIcon(
 
 @Composable
 private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NcCard(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
+    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppIcon(n.packageName, 40, fallbackText = n.appName)
             Column(Modifier.weight(1f)) {
@@ -572,7 +572,7 @@ internal fun NotificationDetail(
                 else -> "正常通知"
             }
             Button(onClick = { onLearn(1) }, Modifier.weight(1f)) { Text(adText) }
-            io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedButton(onClick = { onLearn(0) }, Modifier.weight(1f)) { Text(normalText) }
+            io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(onClick = { onLearn(0) }, Modifier.weight(1f)) { Text(normalText) }
         }
         if (n.learned) {
             Spacer(Modifier.height(8.dp))

@@ -1,4 +1,4 @@
-# NotificationCleaner · 通知净化
+# NotifyFilter · 通知净化
 
 利用本地 AI 模型，清理你的手机通知栏。所有推理与学习均在端上完成，无任何云端依赖。
 
@@ -35,7 +35,7 @@
 ## 构建
 
 ```bash
-git clone https://github.com/ytdttj/NotificationCleaner.git
+git clone https://github.com/Vstory/NotificationCleaner.git
 cd NotificationCleaner
 ./gradlew assembleRelease
 ```

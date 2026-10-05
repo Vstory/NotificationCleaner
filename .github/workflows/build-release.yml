@@ -122,8 +122,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 前缀固定为 NotiCleaner：应用名是中文（通知净化），进不了文件名/URL；上游发行包也用这个名字
-          PREFIX="NotiCleaner"
+          # 前缀固定为 NotifyFilter：应用名是中文（通知净化），进不了文件名/URL。
+          # ⚠️ 必须与 build-ci.yml 的 PREFIX、UpdateViewModel 的 apkName 同值（后者拼应用内更新下载名）。
+          PREFIX="NotifyFilter"
 
           VER="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*/\1/p' app/build.gradle.kts | head -1)"
           CODE="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*/\1/p' app/build.gradle.kts | head -1)"
@@ -398,7 +399,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: NotiCleaner-release-${{ steps.info.outputs.ts }}-${{ steps.info.outputs.short }}-${{ github.run_number }}
+          name: NotifyFilter-release-${{ steps.info.outputs.ts }}-${{ steps.info.outputs.short }}-${{ github.run_number }}
           path: dist/*.apk
           if-no-files-found: error
 

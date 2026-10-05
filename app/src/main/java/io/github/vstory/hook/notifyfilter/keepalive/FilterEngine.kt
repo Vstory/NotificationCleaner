@@ -146,12 +146,12 @@ internal class FilterEngine {
                 runCatching {
                     refresh(p)
                     refreshModel(api)
-                    android.util.Log.i("NCWatch", "module config hot-updated: rules=${config.rules.size} deltaV=${config.deltaVersion}")
+                    android.util.Log.i("NfWatch", "module config hot-updated: rules=${config.rules.size} deltaV=${config.deltaVersion}")
                 }
             }
             prefs.registerOnSharedPreferenceChangeListener(listener)
         } catch (t: Throwable) {
-            android.util.Log.w("NCWatch", "module remote prefs unavailable: $t")
+            android.util.Log.w("NfWatch", "module remote prefs unavailable: $t")
         }
     }
 
@@ -193,7 +193,7 @@ internal class FilterEngine {
                 runCatching {
                     val pfd = api.openRemoteFile(ModuleConfigCodec.DELTA_REMOTE_FILE)
                     if (pfd == null) {
-                        android.util.Log.w("NCWatch", "module delta file unavailable (v$version)")
+                        android.util.Log.w("NfWatch", "module delta file unavailable (v$version)")
                     } else {
                         pfd.use {
                             val delta = SpamDelta.decode(
@@ -203,13 +203,13 @@ internal class FilterEngine {
                                 next = base.withDelta(delta)
                                 deltaApplied = true
                                 android.util.Log.i(
-                                    "NCWatch",
+                                    "NfWatch",
                                     "module delta v$version loaded: ${delta.indices.size} weights",
                                 )
                             }
                         }
                     }
-                }.onFailure { android.util.Log.w("NCWatch", "module delta load failed: $it") }
+                }.onFailure { android.util.Log.w("NfWatch", "module delta load failed: $it") }
             }
             model = next
             if (version == 0L || deltaApplied) {
@@ -219,13 +219,13 @@ internal class FilterEngine {
                 // 关键：不登记版本号，保证重试仍会触发；重试以**当前**版本号为准
                 //（等待期间用户可能又学了一条）
                 val delay = DELTA_RETRY_DELAYS_MS[attempt.coerceIn(0, DELTA_RETRY_DELAYS_MS.lastIndex)]
-                android.util.Log.w("NCWatch", "module delta v$version not applied, retry in ${delay}ms")
+                android.util.Log.w("NfWatch", "module delta v$version not applied, retry in ${delay}ms")
                 Thread.sleep(delay)
                 rebuildModel(api, config.deltaVersion, attempt + 1)
             } else {
-                android.util.Log.w("NCWatch", "module delta v$version gave up after $DELTA_RETRY_MAX retries")
+                android.util.Log.w("NfWatch", "module delta v$version gave up after $DELTA_RETRY_MAX retries")
             }
-        }.onFailure { android.util.Log.w("NCWatch", "module model rebuild failed: $it") }
+        }.onFailure { android.util.Log.w("NfWatch", "module model rebuild failed: $it") }
     }
 
     /** base 模型只加载一次；加载失败置负极标记，避免每次学习事件都重试 0.5MB IO。 */
@@ -236,7 +236,7 @@ internal class FilterEngine {
             SpamModel::class.java.classLoader
                 ?.getResourceAsStream(MODEL_RESOURCE)?.use { SpamModel.load(it) }
         }.onFailure {
-            android.util.Log.w("NCWatch", "module base model load failed: $it")
+            android.util.Log.w("NfWatch", "module base model load failed: $it")
         }.getOrNull()
         if (base == null) baseLoadFailed = true else cachedBase = base
         return base
@@ -293,6 +293,6 @@ internal class FilterEngine {
 
     /** P0-3：模型重建专用单线程（串行化重建，避免与 decide() 的并发读互相干扰） */
     private val rebuildExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-        Thread(r, "NCWatch-ModelRebuild").apply { isDaemon = true }
+        Thread(r, "NfWatch-ModelRebuild").apply { isDaemon = true }
     }
 }

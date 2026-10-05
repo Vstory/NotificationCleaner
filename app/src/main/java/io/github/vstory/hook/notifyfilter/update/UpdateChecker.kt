@@ -29,7 +29,7 @@ object UpdateChecker {
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
             conn.instanceFollowRedirects = false
-            conn.setRequestProperty("User-Agent", "NotiCleaner/${BuildConfig.VERSION_NAME}")
+            conn.setRequestProperty("User-Agent", "NotifyFilter/${BuildConfig.VERSION_NAME}")
             try {
                 when (conn.responseCode) {
                     in 200..299 -> {

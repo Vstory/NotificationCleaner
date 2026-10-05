@@ -15,12 +15,12 @@ import kotlinx.coroutines.launch
  * （系统节流约 9 分钟一次，对重绑场景足够）。自续约：每次触发后重新调度下一次。
  *
  * 1.1.14：触发时除请求重绑外，还尝试重启保活前台服务（恢复进程重要性、
- * 抖掉可能卡死的绑定）；全部动作写 NCWatch 日志供远程诊断。
+ * 抖掉可能卡死的绑定）；全部动作写 NfWatch 日志供远程诊断。
  */
 class WatchdogReceiver : BroadcastReceiver() {
 
     companion object {
-        private const val TAG = "NCWatch"
+        private const val TAG = "NfWatch"
         private const val REQUEST_CODE = 2001
 
         /** 未获电池豁免：Doze 下 allow-while-idle 系统节流约 9 分钟，再短无意义 */

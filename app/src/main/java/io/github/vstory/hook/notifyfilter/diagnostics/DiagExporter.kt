@@ -57,7 +57,7 @@ object DiagExporter {
         val now = System.currentTimeMillis()
         val windowStart = now - WINDOW_MS
         val dir = File(context.getExternalFilesDir(null), "logs").apply { mkdirs() }
-        val out = File(dir, "NotiCleaner-log-${stampFmt.format(Date(now))}.zip")
+        val out = File(dir, "NotifyFilter-log-${stampFmt.format(Date(now))}.zip")
 
         // ---- 先生成各模块文件正文（00 的汇总需要各模块统计） ----
         val logcat = dumpLogcat()
@@ -96,7 +96,7 @@ object DiagExporter {
         val settings = io.github.vstory.hook.notifyfilter.ServiceLocator.settings
         val threshold = settings.threshold.first()
         val intercept = settings.interceptMode.first()
-        appendLine("==== NotiCleaner 诊断日志（分模块 ZIP）====")
+        appendLine("==== NotifyFilter 诊断日志（分模块 ZIP）====")
         appendLine("导出时间: ${dayFmt.format(Date(now))}")
         appendLine("APP 版本: ${BuildConfig.VERSION_NAME} (versionCode=${BuildConfig.VERSION_CODE})")
         appendLine("设备: ${Build.MANUFACTURER} ${Build.MODEL}")
@@ -147,7 +147,7 @@ object DiagExporter {
         entries: List<Entry>,
         logcatLines: List<String>,
     ): String = buildString {
-        appendLine("==== NotiCleaner 诊断日志 · 模块：${LogModules.title(module)} [$module] ====")
+        appendLine("==== NotifyFilter 诊断日志 · 模块：${LogModules.title(module)} [$module] ====")
         appendLine("模块内容: ${LogModules.desc(module)}")
         appendLine("APP 版本: ${BuildConfig.VERSION_NAME} (versionCode=${BuildConfig.VERSION_CODE})")
         appendLine("设备: ${Build.MANUFACTURER} ${Build.MODEL} / Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
@@ -185,7 +185,7 @@ object DiagExporter {
     private fun logcatTagDesc(module: String): String {
         val tags = mutableListOf<String>()
         LogModules.logcatTagFor(module)?.let { tags += it }
-        if (module == LogModules.KEEP) tags += "NCWatch(看门狗相关行)"
+        if (module == LogModules.KEEP) tags += "NfWatch(看门狗相关行)"
         return if (tags.isEmpty()) "（该模块无独立 logcat 来源）" else tags.joinToString(", ")
     }
 
@@ -275,7 +275,7 @@ object DiagExporter {
 
     /**
      * logcat 行按 tag 归到模块，并过滤到 24 小时窗口内。
-     * 行格式（`-v time`）：`09-28 23:32:07.474 I/NCWatch(23522): message`
+     * 行格式（`-v time`）：`09-28 23:32:07.474 I/NfWatch(23522): message`
      */
     private fun splitLogcat(logcat: String, windowStart: Long): Map<String, List<String>> {
         val out = HashMap<String, MutableList<String>>()
@@ -294,10 +294,10 @@ object DiagExporter {
     }
 
     private fun moduleOfTag(tag: String, msg: String): String? = when (tag) {
-        "NotiCleaner" -> LogModules.HOOK
+        "NotifyFilter" -> LogModules.HOOK
         "UpdateVM" -> LogModules.UPDATE
         "ModelRepository" -> LogModules.MODEL
-        "NCWatch" -> {
+        "NfWatch" -> {
             // 看门狗/保活相关行归 KEEP，其余（监听回调/补扫）归 NLS
             val low = msg.lowercase()
             if (low.contains("alarm") || low.contains("repair") || low.contains("fired") ||

@@ -92,9 +92,9 @@ fun AppPickerScreen(
         it.label.contains(query, true) || it.pkg.contains(query, true)
     }
 
-    io.github.vstory.hook.notifyfilter.ui.glass.NcScaffold(
+    io.github.vstory.hook.notifyfilter.ui.glass.NfScaffold(
         topBar = {
-            io.github.vstory.hook.notifyfilter.ui.glass.NcTopAppBar(
+            io.github.vstory.hook.notifyfilter.ui.glass.NfTopAppBar(
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") }
@@ -110,7 +110,7 @@ fun AppPickerScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            io.github.vstory.hook.notifyfilter.ui.glass.NcOutlinedTextField(
+            io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("搜索 App 名称或包名") },
@@ -136,7 +136,7 @@ fun AppPickerScreen(
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
                     items(filtered, key = { it.pkg }) { app ->
                         val checked = selected.containsKey(app.pkg)
-                        io.github.vstory.hook.notifyfilter.ui.glass.NcCard(
+                        io.github.vstory.hook.notifyfilter.ui.glass.NfCard(
                             onClick = {
                                 if (multiSelect) {
                                     selected = if (checked) selected - app.pkg else selected + (app.pkg to app.label)

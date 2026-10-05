@@ -75,13 +75,13 @@ class KeepAliveService : Service() {
     /** 亮屏/解锁自愈（1.1.13）：Doze 期间积压的重绑需求在亮屏瞬间补做 */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            android.util.Log.i("NCWatch", "screen event ${intent.action}")
+            android.util.Log.i("NfWatch", "screen event ${intent.action}")
             runCatching {
                 if (CleanerListenerService.isListenerEnabled(context) &&
                     !CleanerListenerService.isListenerConnected()
                 ) {
                     CleanerListenerService.requestRebindIfEnabled(context)
-                    android.util.Log.i("NCWatch", "screen event → rebind requested")
+                    android.util.Log.i("NfWatch", "screen event → rebind requested")
                 }
             }
         }
@@ -91,7 +91,7 @@ class KeepAliveService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        android.util.Log.i("NCWatch", "keepalive FGS onCreate uptime=${android.os.SystemClock.elapsedRealtime()}")
+        android.util.Log.i("NfWatch", "keepalive FGS onCreate uptime=${android.os.SystemClock.elapsedRealtime()}")
         val nm = getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
@@ -126,7 +126,7 @@ class KeepAliveService : Service() {
                     if (CleanerListenerService.isListenerEnabled(this@KeepAliveService) &&
                         !CleanerListenerService.isListenerConnected()
                     ) {
-                        android.util.Log.i("NCWatch", "fgs startup self-check → rebind requested")
+                        android.util.Log.i("NfWatch", "fgs startup self-check → rebind requested")
                         CleanerListenerService.requestRebindIfEnabled(this@KeepAliveService)
                     }
                 }
@@ -202,7 +202,7 @@ class KeepAliveService : Service() {
             )
             runCatching {
                 val log = ListenerRepair.repair(ShizukuExecutor)
-                android.util.Log.i("NCWatch", "listener repair done:\n$log")
+                android.util.Log.i("NfWatch", "listener repair done:\n$log")
                 // 2.0.1 Dev 3：系统侧诊断段进环形日志（导出可见，logcat 易滚动）
                 val diag = log.substringAfter("---- 系统侧诊断", "")
                 if (diag.isNotBlank()) {
@@ -216,7 +216,7 @@ class KeepAliveService : Service() {
                     "看门狗：Shizuku 修复完成 → ${log.lineSequence().firstOrNull()?.take(80)}",
                 )
             }.onFailure { t ->
-                android.util.Log.w("NCWatch", "listener repair failed: $t")
+                android.util.Log.w("NfWatch", "listener repair failed: $t")
                 io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
                     io.github.vstory.hook.notifyfilter.diagnostics.LogModules.KEEP,
                     "✗ 看门狗：Shizuku 修复失败 $t",
