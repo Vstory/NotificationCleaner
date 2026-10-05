@@ -1,6 +1,5 @@
 package io.github.vstory.hook.notifyfilter.ui.history
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,10 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -59,20 +55,21 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 // 1.3.2（P3-6）：SimpleDateFormat（非线程安全）→ java.time DateTimeFormatter（不可变）
@@ -125,7 +122,7 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                TabRow(
+                TabRowWithContour(
                     tabs = listOf("全部", "已过滤", "正常"),
                     selectedTabIndex = HistoryFilter.entries.indexOf(filter).coerceAtLeast(0),
                     onTabSelected = { vm.setFilter(HistoryFilter.entries[it]) },
@@ -296,7 +293,10 @@ private fun renderAppIcon(
 
 @Composable
 private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable(onClick = onClick)) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+    ) {
         Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppIcon(n.packageName, 40, fallbackText = n.appName)
             Column(Modifier.weight(1f)) {
@@ -378,7 +378,10 @@ private fun AdvancedFilterButton(
         }
     }
     val active = advancedActiveCount(adv)
-    Button(onClick = onToggle) {
+    Button(
+        onClick = onToggle,
+        colors = if (active > 0) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors(),
+    ) {
         Text(if (active > 0) "筛选($active)" else "筛选", style = MiuixTheme.textStyles.button)
     }
 }
@@ -388,49 +391,43 @@ private fun AdvancedFilterPanel(vm: HistoryViewModel, onOpenAppPicker: () -> Uni
     val adv by vm.advancedFilter.collectAsState()
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
         Spacer(Modifier.height(6.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Button(
+        Card(Modifier.fillMaxWidth()) {
+            ArrowPreference(
+                title = "应用",
+                summary = if (adv.apps.isEmpty()) "全部 App" else "已选 ${adv.apps.size} 个",
+                // 复用规则页 AppPicker（含系统应用），结果经 AppPickerSession 回读
                 onClick = {
-                    // 复用规则页 AppPicker（含系统应用），结果经 AppPickerSession 回读
-                    io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession.initial = adv.apps
+                    AppPickerSession.initial = adv.apps
                     onOpenAppPicker()
                 },
-            ) {
-                Text(
-                    if (adv.apps.isEmpty()) "全部 App"
-                    else "App(${adv.apps.size})",
-                    style = MiuixTheme.textStyles.button,
-                )
-            }
-            Button(
-                onClick = { vm.setAdvancedFilter(adv.copy(learnedOnly = !adv.learnedOnly)) },
-            ) { Text("已学习", style = MiuixTheme.textStyles.button) }
-            if (advancedActiveCount(adv) > 0) {
-                TextButton(text = "清除", onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) })
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+            )
+            HorizontalDivider()
+            SwitchPreference(
+                checked = adv.learnedOnly,
+                onCheckedChange = { vm.setAdvancedFilter(adv.copy(learnedOnly = it)) },
+                title = "只看已学习",
+            )
+            HorizontalDivider()
             DateField(
                 label = "开始时间",
                 value = adv.startDate,
                 onUpdate = { vm.setAdvancedFilter(adv.copy(startDate = it)) },
-                modifier = Modifier.weight(1f),
             )
+            HorizontalDivider()
             DateField(
                 label = "结束时间",
                 value = adv.endDate,
                 onUpdate = { vm.setAdvancedFilter(adv.copy(endDate = it)) },
-                modifier = Modifier.weight(1f),
             )
+            if (advancedActiveCount(adv) > 0) {
+                HorizontalDivider()
+                ArrowPreference(
+                    title = "清除筛选条件",
+                    onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) },
+                )
+            }
         }
+        Spacer(Modifier.height(6.dp))
     }
 }
 
@@ -440,28 +437,13 @@ private fun AdvancedFilterPanel(vm: HistoryViewModel, onOpenAppPicker: () -> Uni
  * 故改用设置页更常见的滚轮形态。
  */
 @Composable
-private fun DateField(label: String, value: LocalDate?, onUpdate: (LocalDate?) -> Unit, modifier: Modifier = Modifier) {
+private fun DateField(label: String, value: LocalDate?, onUpdate: (LocalDate?) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
-    Box(modifier) {
-        TextField(
-            value = value?.toString().orEmpty(),
-            onValueChange = {},
-            label = label,
-            useLabelAsPlaceholder = true,
-            readOnly = true,
-            trailingIcon = {
-                IconButton(onClick = { showPicker = true }) {
-                    Icon(Icons.Filled.DateRange, contentDescription = "选择日期")
-                }
-            },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // 透明覆盖层：整个字段可点（readOnly TextField 自身不吃点击）
-        Box(
-            Modifier.matchParentSize().clickable { showPicker = true },
-        )
-    }
+    ArrowPreference(
+        title = label,
+        summary = value?.toString() ?: "未设置",
+        onClick = { showPicker = true },
+    )
     if (showPicker) {
         val init = value ?: LocalDate.now()
         var y by remember { mutableStateOf(init.year) }
@@ -510,13 +492,13 @@ private fun DateField(label: String, value: LocalDate?, onUpdate: (LocalDate?) -
                         showPicker = false
                     },
                     modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
                 ) { Text("确定", style = MiuixTheme.textStyles.button) }
             }
         }
     }
 }
 
-/** 日期分组头：居中日期文本（列表从新到旧，每天插入一个） */
 @Composable
 private fun DateHeader(day: LocalDate) {
     Row(
