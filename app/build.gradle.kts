@@ -35,8 +35,8 @@ android {
         // 但降级需单独验证 miuix 各模块的运行时 API 依赖，未做，故维持
         minSdk = 33
         targetSdk = 36
-        versionCode = 72
-        versionName = "2.1.2"
+        versionCode = 73
+        versionName = "2.1.3"
         // 1.3.2（P3-7③）：只保留 arm64-v8a——剔除其余架构（armeabi-v7a/x86/x86_64）
         // 的原生库，精简 APK 体积；目标设备为真机 ARM64（模块端同样仅注入 arm64 设备）
         ndk {
