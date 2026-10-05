@@ -48,11 +48,22 @@ android {
                 storePassword = localProps.getProperty("storePassword")
                 keyAlias = localProps.getProperty("keyAlias")
                 keyPassword = localProps.getProperty("keyPassword")
+                // v1（JAR 签名）只对 API < 24 有意义，本项目 minSdk 33 ⇒ 关；
+                // v3 是 API 28+ 的校验路径，AGP 默认不开，须显式启用；v4 会多产 .idsig，本项目不分发
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = false
             }
         }
     }
 
     buildTypes {
+        debug {
+            // debug 与正式版共用同一把固定钥：CI 的 Verify 步断言产物指纹等于固定钥，
+            // 且两变体同签名才能互相覆盖安装（卸载会丢 LSPosed 作用域状态）
+            if (hasSigning) signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = true
             if (hasSigning) signingConfig = signingConfigs.getByName("release")
