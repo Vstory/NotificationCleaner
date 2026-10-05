@@ -18,11 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.List
 // 就近替换为 core 内语义相近图标，debug DEX 体积显著缩小）
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -55,6 +50,9 @@ import io.github.vstory.hook.notifyfilter.ui.rules.RulesScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.SettingsScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.StatsDetailScreen
 import kotlinx.coroutines.Dispatchers
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
+import top.yukonga.miuix.kmp.basic.Scaffold
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -291,8 +289,8 @@ fun MainScaffold() {
                         NavigationBarItem(
                             selected = currentRoute == tab.route,
                             onClick = { onTabClick(tab.route) },
-                            icon = { Icon(tab.icon, contentDescription = tab.label) },
-                            label = { Text(tab.label) },
+                            icon = tab.icon,
+                            label = tab.label,
                         )
                     }
                 }
