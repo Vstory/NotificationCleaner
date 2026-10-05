@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vstory.hook.notifyfilter.ui.history.AppIcon
@@ -82,16 +81,14 @@ fun AppPickerScreen(
         }
         loaded = true
     }
-    // 存 TextFieldValue 而非 String：miuix TextField 每次重组以 value 重建光标，
-    // 只留 String 会把光标顶到末尾，中间插入/删除时跳位
-    var query by remember { mutableStateOf(TextFieldValue("")) }
+    var query by remember { mutableStateOf("") }
     var selected by remember {
         mutableStateOf(AppPickerSession.initial.associate { it.first to it.second })
     }
 
-    val filtered = if (query.text.isBlank()) allApps
+    val filtered = if (query.isBlank()) allApps
     else allApps.filter {
-        it.label.contains(query.text, true) || it.pkg.contains(query.text, true)
+        it.label.contains(query, true) || it.pkg.contains(query, true)
     }
 
     Scaffold(
