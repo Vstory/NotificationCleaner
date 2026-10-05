@@ -11,16 +11,18 @@ import io.github.vstory.hook.notifyfilter.provider.ModuleLogProvider
 import java.lang.reflect.Method
 
 /**
- * LSPosed 模块入口（libxposed Modern API 102，作用域 system = system_server）。
+ * LSPosed 模块入口（libxposed Modern API 102，作用域：系统 android / system_server）。
  *
  * 两组 hook：
- * 1. 保活：拦截 ActiveServices 的 stop 系列，阻止系统/厂商框架停止本应用服务。
- * 2. 入队前拦截：hook NotificationManagerService.enqueueNotificationInternal，通知入队前在
- *    system_server 内完成决策——命中即吞掉，根除 NLS 进程冻结/被杀导致的过滤延迟；
- *    拦截记录经 [ModuleLogSink] 回流 APP（ModuleLogProvider），历史与学习闭环完整。
+ * 1. 保活（Plan.md §7.4）：拦截 ActiveServices 的 stop 系列，阻止系统/厂商框架停止本应用服务。
+ * 2. 入队前拦截（1.2.1，借鉴 ref/Notice）：hook NotificationManagerService.enqueueNotificationInternal，
+ *    通知入队前在 system_server 内完成决策——命中即吞掉，根除 NLS 进程冻结/被杀导致的过滤延迟。
+ *    拦截记录经 ModuleLogSink 回流 APP（ModuleLogProvider），历史与学习闭环完整。
  *
- * API 102 模型：入口类继承 XposedModule（框架实例化后注入），hook 为拦截器式 Hooker——
- * 【不调用 chain.proceed() 即阻断原方法】。在 LSPosed 管理器中禁用模块即完全停用。
+ * API 102 模型：入口类继承 XposedModule（框架实例化后 attachFramework 注入），
+ * hook 为拦截器式 Hooker——【不调用 chain.proceed() 即阻断原方法】；
+ * ExceptionMode.PROTECTIVE：hook 内异常被框架吞掉并照常放行。
+ * 在 LSPosed 管理器中禁用模块即完全停用。
  */
 class MainHook : XposedModule() {
 
@@ -136,7 +138,7 @@ class MainHook : XposedModule() {
         }
     }
 
-    // ---- Hook 组 2：入队前拦截 ----
+    // ---- Hook 组 2：入队前拦截（1.2.1） ----
 
     private fun hookNotificationManagerService(classLoader: ClassLoader) {
         val nms = runCatching { Class.forName(NMS_CLASS, false, classLoader) }.getOrElse {
@@ -156,12 +158,14 @@ class MainHook : XposedModule() {
         }.onSuccess { ok("$NMS_CLASS#enqueueNotificationInternal(${target.parameterCount})", it) }
             .onFailure { fail("$NMS_CLASS#enqueueNotificationInternal", it) }
 
-        // 此处【不可】再调 ActivityThread.systemMain() 取 SystemContext 提交心跳：system_server
-        // 启动中二次调用 systemMain 会 new 出第二个 ActivityThread 并 attach，污染全局状态——
-        // SystemServer.startOtherServices 的 installSystemProviders 拿到残缺 ClassLoader →
-        // ClassNotFoundException → system_server FATAL → 重启循环 → 安全模式
-        // （2026-09-25 真机事故）。心跳改由 NmsBlockHooker 首次拦截时提交：那时系统已稳定运行，
-        // Context 取自 hook 到的 NMS 实例本身，零额外反射。
+        // Dev 5 曾在此处调 ActivityThread.systemMain() 取 SystemContext 提交心跳——
+        // 【恶性 bug】system_server 启动中二次调用 systemMain 会 new 出第二个
+        // ActivityThread 并 attach，污染全局状态：SystemServer.startOtherServices 的
+        // installSystemProviders 拿到残缺 ClassLoader → ClassNotFoundException →
+        // system_server FATAL → 重启循环 → 安全模式（2026-09-25 真机事故，Dev 6 首次
+        // 重启时引爆，LSPosed 日志 4718 行铁证）。
+        // Dev 7 修复：心跳改由 NmsBlockHooker 首次拦截时提交（那时系统已稳定运行，
+        // Context 取自 hook 到的 NMS 实例本身，零额外反射）。
     }
 
     /** 取参数最多的 enqueueNotificationInternal 重载（跨 ROM 版本兜底） */
@@ -185,7 +189,7 @@ class MainHook : XposedModule() {
         private val sink: ModuleLogSink,
     ) : XposedInterface.Hooker {
 
-        /** 首次真实拦截时提交激活心跳（此前的 systemMain() 方案会导致 system_server 崩溃） */
+        /** Dev 7：首次真实拦截时提交激活心跳（此前的 systemMain() 方案会导致 system_server 崩溃） */
         @Volatile
         private var heartbeatSent = false
 
