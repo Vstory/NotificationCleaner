@@ -49,7 +49,6 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
@@ -260,7 +259,7 @@ fun SettingsScreen(
     val modelInfo by vm.modelInfo.collectAsState()
     val execResult by vm.execResult.collectAsState()
     val historyRetentionDays by vm.historyRetentionDays.collectAsState()
-    var thresholdInput by remember(threshold) { mutableStateOf("%.2f".format(threshold)) }
+    var thresholdDraft by remember(threshold) { mutableStateOf(threshold) }
     var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
 
@@ -311,42 +310,15 @@ fun SettingsScreen(
                 title = "拦截模式",
                 summary = "关闭后仅标记不拦截，便于观察误杀（AI 仍打分并记录）",
             )
-            BasicComponent(
+            SliderPreference(
+                value = thresholdDraft,
+                onValueChange = { thresholdDraft = it },
                 title = "过滤阈值",
-                summary = "AI 判定广告概率 ≥ 阈值时自动清除。范围 0.5~1.0，默认 0.8。",
-                bottomAction = {
-                    TextField(
-                        value = thresholdInput,
-                        // 仅编辑本地输入，点击"保存"后才生效
-                        onValueChange = { thresholdInput = it },
-                        label = "阈值 (0.5~1.0)",
-                        useLabelAsPlaceholder = true,
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                        TextButton(text = "恢复默认", onClick = {
-                            thresholdInput = "0.80"
-                            vm.setThreshold(0.8f)
-                        })
-                        Spacer(Modifier.width(8.dp))
-                        val parsed = thresholdInput.toFloatOrNull()
-                        val valid = parsed != null && parsed in 0.5f..1.0f && parsed != threshold
-                        Button(
-                            enabled = valid,
-                            onClick = { parsed?.let { vm.setThreshold(it) } },
-                            colors = ButtonDefaults.buttonColorsPrimary(),
-                        ) { Text("保存") }
-                    }
-                    if (thresholdInput.toFloatOrNull()?.let { it !in 0.5f..1.0f } == true) {
-                        Text(
-                            "请输入 0.5 ~ 1.0 之间的数值",
-                            color = MiuixTheme.colorScheme.error,
-                            style = MiuixTheme.textStyles.footnote1,
-                        )
-                    }
-                },
+                summary = "AI 判定广告概率 ≥ 阈值时自动清除（默认 0.8）",
+                valueText = "%.2f".format(thresholdDraft),
+                valueRange = 0.5f..1.0f,
+                steps = 9,
+                onValueChangeFinished = { vm.setThreshold(thresholdDraft) },
             )
         }
 
@@ -358,23 +330,12 @@ fun SettingsScreen(
                 summary = if (keepAlive.listenerEnabled) "已启用" else "未启用，点击前往授权",
                 onClick = { vm.openListenerSettings() },
             )
-            val hint = manufacturerHint
             ArrowPreference(
                 title = "电池优化白名单",
                 summary = if (keepAlive.ignoringBattery) "已启用" else "未启用，点击前往设置",
-                bottomAction = if (hint != null) {
-                    {
-                        Text(
-                            hint,
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                } else {
-                    null
-                },
                 onClick = { vm.requestIgnoreBattery() },
             )
+            manufacturerHint?.let { hint -> BasicComponent(summary = hint) }
             SwitchPreference(
                 checked = excludeRecents,
                 onCheckedChange = { vm.setExcludeFromRecents(it) },
@@ -383,7 +344,7 @@ fun SettingsScreen(
             )
             ArrowPreference(
                 title = "高级权限（可选）",
-                summary = if (permAdvancedOpen) "点击收起" else "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
+                summary = "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
                 onClick = { permAdvancedOpen = !permAdvancedOpen },
             )
             if (permAdvancedOpen) {
@@ -481,7 +442,7 @@ fun SettingsScreen(
             // ---- 历史通知管理（Dev 6，折叠）----
             ArrowPreference(
                 title = "历史通知管理",
-                summary = if (historyPanelOpen) "点击收起" else "CSV 导出与保留天数",
+                summary = "CSV 导出与保留天数",
                 onClick = { historyPanelOpen = !historyPanelOpen },
             )
             if (historyPanelOpen) {
@@ -550,7 +511,7 @@ fun SettingsScreen(
             )
             ArrowPreference(
                 title = "高级功能",
-                summary = if (advancedOpen) "点击收起" else "AI 模型学习与重置",
+                summary = "AI 模型学习与重置",
                 onClick = { advancedOpen = !advancedOpen },
             )
             if (advancedOpen) {
@@ -719,14 +680,23 @@ private fun AdvancedRow(label: String, desc: String, ok: Boolean, actionLabel: S
         endActions = {
             Text(
                 if (ok) "可用" else "不可用",
-                style = MiuixTheme.textStyles.footnote1,
-                color = if (ok) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                color = if (ok) {
+                    MiuixTheme.colorScheme.onSurfaceVariantActions
+                } else {
+                    MiuixTheme.colorScheme.disabledOnSecondaryVariant
+                },
             )
             if (actionLabel != null) {
                 Spacer(Modifier.width(8.dp))
-                TextButton(text = actionLabel, onClick = onAction)
+                Text(
+                    actionLabel,
+                    fontSize = MiuixTheme.textStyles.body2.fontSize,
+                    color = MiuixTheme.colorScheme.primary,
+                )
             }
         },
+        onClick = onAction,
     )
 }
 
