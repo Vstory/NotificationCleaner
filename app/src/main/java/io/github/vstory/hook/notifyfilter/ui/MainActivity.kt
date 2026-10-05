@@ -20,13 +20,21 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
 import io.github.vstory.hook.notifyfilter.ui.history.HistoryScreen
+import io.github.vstory.hook.notifyfilter.ui.nav.LocalNavigator
+import io.github.vstory.hook.notifyfilter.ui.nav.MainPagerState
+import io.github.vstory.hook.notifyfilter.ui.nav.Navigator
+import io.github.vstory.hook.notifyfilter.ui.nav.Route
+import io.github.vstory.hook.notifyfilter.ui.nav.rememberMainPagerState
 import io.github.vstory.hook.notifyfilter.ui.permission.OnboardingScreen
 import io.github.vstory.hook.notifyfilter.ui.permission.PermissionLostDialog
 import io.github.vstory.hook.notifyfilter.ui.permission.checkPermissions
@@ -35,9 +43,13 @@ import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession
 import io.github.vstory.hook.notifyfilter.ui.rules.RuleEditScreen
 import io.github.vstory.hook.notifyfilter.ui.rules.RulesScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.AdvancedPermissionScreen
+import io.github.vstory.hook.notifyfilter.ui.settings.AiModelScreen
+import io.github.vstory.hook.notifyfilter.ui.settings.OpenSourceScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.SettingsScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.StatsDetailScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -45,8 +57,11 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ListView
 import top.yukonga.miuix.kmp.icon.extended.Recent
 import top.yukonga.miuix.kmp.icon.extended.Settings
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.nav.core.NavDisplay
+import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
+import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
+import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
 
 class MainActivity : ComponentActivity() {
 
@@ -225,34 +240,93 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector)
+private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("history", "历史", MiuixIcons.Recent),
-    Tab("rules", "规则", MiuixIcons.ListView),
-    Tab("settings", "设置", MiuixIcons.Settings),
+    Tab("历史", MiuixIcons.Recent),
+    Tab("规则", MiuixIcons.ListView),
+    Tab("设置", MiuixIcons.Settings),
 )
 
 @Composable
 fun MainScaffold() {
-    val navController = rememberNavController()
-    val backStack by navController.currentBackStackEntryAsState()
-    val currentRoute = backStack?.destination?.route ?: "history"
-    fun onTabClick(route: String) {
-        navController.navigate(route) {
-            popUpTo(navController.graph.startDestinationId) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
-        }
+    val backStack = rememberNavBackStack<Route>(Route.Main)
+    val navigator = remember { Navigator(backStack) }
+    val pagerState = rememberPagerState(pageCount = { tabs.size })
+    val mainPagerState = rememberMainPagerState(pagerState)
+
+    // 横移返回方向取物理方向（不随布局方向镜像），RTL 下必须反过来
+    val swipeDismiss = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+        NavSwipeDirection.RightToLeft
+    } else {
+        NavSwipeDirection.LeftToRight
     }
 
+    CompositionLocalProvider(LocalNavigator provides navigator) {
+        NavDisplay(
+            backStack = backStack,
+            onBack = { navigator.pop() },
+            effects = NavDisplayEffects(
+                cornerClipRadius = rememberNavSystemCornerRadius(),
+            ),
+        ) {
+            entry<Route.Main>(swipeDismiss = swipeDismiss) {
+                MainPage(mainPagerState = mainPagerState, navigator = navigator)
+            }
+            entry<Route.Advanced>(swipeDismiss = swipeDismiss) {
+                AdvancedPermissionScreen(onBack = { navigator.pop() })
+            }
+            entry<Route.AiModel>(swipeDismiss = swipeDismiss) {
+                AiModelScreen(onBack = { navigator.pop() })
+            }
+            entry<Route.OpenSource>(swipeDismiss = swipeDismiss) {
+                OpenSourceScreen(onBack = { navigator.pop() })
+            }
+            entry<Route.Stats>(swipeDismiss = swipeDismiss) { route ->
+                StatsDetailScreen(route.mode, onBack = { navigator.pop() })
+            }
+            entry<Route.RuleEdit>(swipeDismiss = swipeDismiss) {
+                RuleEditScreen(
+                    onBack = { navigator.pop() },
+                    openAppPicker = { navigator.push(Route.AppPicker("选择 APP")) },
+                )
+            }
+            entry<Route.AppPicker>(swipeDismiss = swipeDismiss) { route ->
+                AppPickerScreen(
+                    title = route.title,
+                    multiSelect = true,
+                    onBack = { navigator.pop() },
+                    onConfirm = {
+                        // 白名单模式：直接入库；规则模式：结果由 RuleEditScreen 回读
+                        if (route.title == "白名单") {
+                            ServiceLocator.appScope.launch {
+                                it.forEach { (pkg, label) ->
+                                    ServiceLocator.db.whitelistDao().insert(
+                                        io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity(packageName = pkg, appName = label),
+                                    )
+                                }
+                            }
+                        } else {
+                            AppPickerSession.result = it
+                        }
+                        navigator.pop()
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 底栏 + 三个 Tab 的横向 Pager；二级页由 NavDisplay 独立渲染，不带底栏 */
+@Composable
+private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     Scaffold(
         bottomBar = {
             NavigationBar {
-                tabs.forEach { tab ->
+                tabs.forEachIndexed { index, tab ->
                     NavigationBarItem(
-                        selected = currentRoute == tab.route,
-                        onClick = { onTabClick(tab.route) },
+                        selected = mainPagerState.selectedPage == index,
+                        onClick = { mainPagerState.animateToPage(index) },
                         icon = tab.icon,
                         label = tab.label,
                     )
@@ -260,78 +334,33 @@ fun MainScaffold() {
             }
         },
     ) { padding ->
-        MainNavHost(navController = navController, modifier = Modifier.padding(padding))
-    }
-}
-
-/** 主导航（路由定义唯一） */
-@Composable
-private fun MainNavHost(navController: androidx.navigation.NavHostController, modifier: Modifier = Modifier) {
-    NavHost(
-        navController = navController,
-        startDestination = "history",
-        modifier = modifier,
-    ) {
-        composable("history") {
-            HistoryScreen(
-                onOpenAppPicker = {
-                    // initial 已由 HistoryScreen 写入 AppPickerSession；结果同样经 result 回读
-                    navController.navigate("apppicker/筛选APP")
-                },
-            )
+        HorizontalPager(
+            modifier = Modifier.padding(padding),
+            state = mainPagerState.pagerState,
+            verticalAlignment = Alignment.Top,
+            overscrollEffect = null,
+        ) { page ->
+            when (page) {
+                0 -> HistoryScreen(
+                    onOpenAppPicker = {
+                        // initial 已由 HistoryScreen 写入 AppPickerSession；结果同样经 result 回读
+                        navigator.push(Route.AppPicker("筛选APP"))
+                    },
+                )
+                1 -> RulesScreen(
+                    onOpenRuleEdit = { navigator.push(Route.RuleEdit) },
+                    onOpenAppPicker = { navigator.push(Route.AppPicker("白名单")) },
+                )
+                else -> SettingsScreen(
+                    onOpenStats = { navigator.push(Route.Stats(it)) },
+                    onOpenOpenSource = { navigator.push(Route.OpenSource) },
+                    onOpenAdvanced = { navigator.push(Route.Advanced) },
+                    onOpenAiModel = { navigator.push(Route.AiModel) },
+                )
+            }
         }
-        composable("rules") {
-            RulesScreen(
-                onOpenRuleEdit = { navController.navigate("ruleedit") },
-                onOpenAppPicker = { navController.navigate("apppicker/白名单") },
-            )
-        }
-        composable("settings") {
-            SettingsScreen(
-                onOpenStats = { navController.navigate("stats/$it") },
-                onOpenOpenSource = { navController.navigate("opensource") },
-                onOpenAdvanced = { navController.navigate("advanced") },
-            )
-        }
-        composable("opensource") {
-            io.github.vstory.hook.notifyfilter.ui.settings.OpenSourceScreen(onBack = { navController.popBackStack() })
-        }
-        composable("advanced") {
-            AdvancedPermissionScreen(onBack = { navController.popBackStack() })
-        }
-        composable("stats/{mode}") { entry ->
-            val mode = entry.arguments?.getString("mode") ?: "filtered"
-            StatsDetailScreen(mode, onBack = { navController.popBackStack() })
-        }
-        composable("ruleedit") {
-            RuleEditScreen(
-                onBack = { navController.popBackStack() },
-                openAppPicker = { navController.navigate("apppicker/选择 APP") },
-            )
-        }
-        composable("apppicker/{title}") { entry ->
-            val title = entry.arguments?.getString("title") ?: "选择 APP"
-            AppPickerScreen(
-                title = title,
-                multiSelect = true,
-                onBack = { navController.popBackStack() },
-                onConfirm = {
-                    // 白名单模式：直接入库；规则模式：结果由 RuleEditScreen 回读
-                    if (title == "白名单") {
-                        val scope = io.github.vstory.hook.notifyfilter.ServiceLocator.appScope
-                        scope.launch {
-                            it.forEach { (pkg, label) ->
-                                ServiceLocator.db.whitelistDao().insert(
-                                    io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity(packageName = pkg, appName = label),
-                                )
-                            }
-                        }
-                    } else {
-                        AppPickerSession.result = it
-                    }
-                    navController.popBackStack()
-                },
-            )
+        LaunchedEffect(mainPagerState.pagerState.currentPage) {
+            mainPagerState.syncPage()
         }
     }
 }

@@ -134,11 +134,15 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.navigation:navigation-compose:2.9.5")
+    // 导航层改走 miuix-nav（见下方 miuix 块）：NavDisplay 提供 miuix 的页面转场、预测性返回与
+    // 边缘侧滑返回，androidx.navigation 的 NavHost 只会做默认淡入淡出。navigationevent 是 miuix-nav
+    // 的运行时依赖，其 NavigationEventDispatcherOwner 由 activity-compose ≥1.12.0 的宿主提供。
+    implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
 
     // miuix（Mishka 同源设计语言）。坐标**必须带 `-android` 后缀**：那是 KMP 库发布给
     // AndroidX Compose 工程的变体，带源码的 AAR；不带后缀的主件会拉进 CMP 运行时并与之冲突。
     implementation("top.yukonga.miuix.kmp:miuix-ui-android:0.9.4")
+    implementation("top.yukonga.miuix.kmp:miuix-nav-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-preference-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-icons-android:0.9.4")
     implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.4")
