@@ -9,7 +9,6 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,13 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +31,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 可检测的权限状态快照（1.1.8） */
 data class PermissionStatus(
@@ -176,12 +174,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             .padding(20.dp),
     ) {
         Spacer(Modifier.height(16.dp))
-        Text("欢迎使用通知净化器", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("欢迎使用通知净化器", style = MiuixTheme.textStyles.title2, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text(
             "首次使用请完成以下权限授权，保证通知过滤与后台保活正常工作。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MiuixTheme.textStyles.body2,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
         Spacer(Modifier.height(16.dp))
 
@@ -225,12 +223,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         Button(
             onClick = onFinish,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("完成初始化") }
+        ) { Text("完成初始化", style = MiuixTheme.textStyles.button) }
         Spacer(Modifier.height(8.dp))
         Text(
             "提示：未全部授权也可以进入应用，但通知过滤与后台保活可能无法生效，可随时在「设置」中查看保活状态。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
     }
 }
@@ -244,26 +242,30 @@ private fun PermissionCard(
     buttonText: String,
     onJump: () -> Unit,
 ) {
-    io.github.vstory.hook.notifyfilter.ui.glass.NfCard(Modifier.fillMaxWidth()) {
+    Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(title, style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     statusText,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MiuixTheme.textStyles.footnote2,
                     color = when (granted) {
-                        true -> MaterialTheme.colorScheme.primary
-                        false -> MaterialTheme.colorScheme.error
-                        null -> MaterialTheme.colorScheme.onSurfaceVariant
+                        true -> MiuixTheme.colorScheme.primary
+                        false -> MiuixTheme.colorScheme.error
+                        null -> MiuixTheme.colorScheme.onSurfaceVariantSummary
                     },
                 )
             }
             Spacer(Modifier.height(4.dp))
-            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                desc,
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
             Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                io.github.vstory.hook.notifyfilter.ui.glass.NfOutlinedButton(onClick = onJump) { Text(buttonText) }
+                Button(onClick = onJump) { Text(buttonText, style = MiuixTheme.textStyles.button) }
             }
         }
     }
@@ -282,42 +284,45 @@ fun PermissionLostDialog(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    io.github.vstory.hook.notifyfilter.ui.glass.NfAlertDialog(
+    OverlayDialog(
+        show = true,
+        title = "权限已失效",
         onDismissRequest = onDismiss,
-        title = { Text("权限已失效") },
-        text = {
-            Column {
-                Text(
-                    "以下权限已失效，可能导致通知无法过滤或后台被系统清理：",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.height(8.dp))
-                if (lostListener) {
-                    LostPermRow("通知读取权限", onJump = { jumpToListenerSettings(context) })
-                }
-                if (lostBattery) {
-                    LostPermRow("省电策略（需设为无限制）", onJump = { jumpToBatterySettings(context) })
-                }
-                if (lostNotifications) {
-                    LostPermRow("通知发送权限（保活通知无法显示）", onJump = {
-                        jumpToAppNotificationSettings(context)
-                    })
-                }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "提示：部分厂商系统还需检查「自启动」权限",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    ) {
+        Column {
+            Text(
+                "以下权限已失效，可能导致通知无法过滤或后台被系统清理：",
+                style = MiuixTheme.textStyles.footnote1,
+            )
+            Spacer(Modifier.height(8.dp))
+            if (lostListener) {
+                LostPermRow("通知读取权限", onJump = { jumpToListenerSettings(context) })
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("暂不处理") }
-        },
-        dismissButton = {
-            TextButton(onClick = { activity?.let { jumpToAutoStart(it) } }) { Text("自启动设置") }
-        },
-    )
+            if (lostBattery) {
+                LostPermRow("省电策略（需设为无限制）", onJump = { jumpToBatterySettings(context) })
+            }
+            if (lostNotifications) {
+                LostPermRow("通知发送权限（保活通知无法显示）", onJump = {
+                    jumpToAppNotificationSettings(context)
+                })
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "提示：部分厂商系统还需检查「自启动」权限",
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(
+                    text = "自启动设置",
+                    onClick = { activity?.let { jumpToAutoStart(it) } },
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(text = "暂不处理", onClick = onDismiss)
+            }
+        }
+    }
 }
 
 @Composable
@@ -327,7 +332,7 @@ private fun LostPermRow(name: String, onJump: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(name, style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = onJump) { Text("去授权") }
+        Text(name, style = MiuixTheme.textStyles.body2)
+        TextButton(text = "去授权", onClick = onJump)
     }
 }
