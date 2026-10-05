@@ -401,26 +401,22 @@ private fun AdvancedFilterPanel(vm: HistoryViewModel, onOpenAppPicker: () -> Uni
                     onOpenAppPicker()
                 },
             )
-            HorizontalDivider()
             SwitchPreference(
                 checked = adv.learnedOnly,
                 onCheckedChange = { vm.setAdvancedFilter(adv.copy(learnedOnly = it)) },
                 title = "只看已学习",
             )
-            HorizontalDivider()
             DateField(
                 label = "开始时间",
                 value = adv.startDate,
                 onUpdate = { vm.setAdvancedFilter(adv.copy(startDate = it)) },
             )
-            HorizontalDivider()
             DateField(
                 label = "结束时间",
                 value = adv.endDate,
                 onUpdate = { vm.setAdvancedFilter(adv.copy(endDate = it)) },
             )
             if (advancedActiveCount(adv) > 0) {
-                HorizontalDivider()
                 ArrowPreference(
                     title = "清除筛选条件",
                     onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) },

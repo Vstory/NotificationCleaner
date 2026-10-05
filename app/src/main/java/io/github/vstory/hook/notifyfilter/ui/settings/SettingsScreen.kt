@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -22,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -41,7 +41,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -247,6 +246,7 @@ class SettingsViewModel(
 fun SettingsScreen(
     onOpenStats: (String) -> Unit,
     onOpenOpenSource: () -> Unit = {},
+    onOpenAdvanced: () -> Unit = {},
     vm: SettingsViewModel = viewModel(factory = settingsVmFactory()),
 ) {
     val threshold by vm.threshold.collectAsState()
@@ -339,7 +339,6 @@ fun SettingsScreen(
                 summary = if (keepAlive.ignoringBattery) "已启用" else "未启用，点击前往设置",
                 onClick = { vm.requestIgnoreBattery() },
             )
-            manufacturerHint?.let { hint -> BasicComponent(summary = hint) }
             SwitchPreference(
                 checked = excludeRecents,
                 onCheckedChange = { vm.setExcludeFromRecents(it) },
@@ -348,49 +347,23 @@ fun SettingsScreen(
             )
         }
 
+        manufacturerHint?.let { hint ->
+            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                Text(
+                    hint,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
+        }
+
         SmallTitle("高级权限")
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            AdvancedRow(
-                label = "Shizuku 保活",
-                desc = "免 Root 写入电池优化白名单 / 通知监听权限",
-                ok = keepAlive.shizukuAvailable,
-                actionLabel = if (keepAlive.shizukuAvailable) "应用" else "授权",
-                onAction = { if (keepAlive.shizukuAvailable) vm.applyShizuku() else vm.requestShizuku() },
-            )
-            AdvancedRow(
-                label = "Root 保活",
-                desc = "以 Root 执行白名单与厂商自启动命令（最彻底）",
-                ok = keepAlive.rootAvailable,
-                actionLabel = "应用",
-                onAction = { if (keepAlive.rootAvailable) vm.applyRoot() else vm.showToast("未检测到 Root（su）") },
-            )
-            AdvancedRow(
-                label = "LSPosed 保活",
-                desc = "安装 LSPosed 并激活本模块（作用域勾选「系统(android)」）后自动生效，重启手机完成。" +
-                    "未打勾 = 未检测到激活证据（框架服务/模块心跳），以 LSPosed 管理器为准",
-                ok = keepAlive.lspDetected == true,
-                actionLabel = if (lspServiceState.bound && !lspServiceState.hasScope(
-                        io.github.vstory.hook.notifyfilter.keepalive.LspServiceDetector.SCOPE_SYSTEM_SERVER,
-                    )
-                ) "授权" else null,
-                onAction = {
-                    if (lspServiceState.bound) vm.requestKeepAliveScope()
-                    else vm.showToast("请先在 LSPosed 中启用本模块")
-                },
-            )
-            AdvancedRow(
-                label = "无障碍保活",
-                desc = "开启「保活守护」无障碍服务：系统绑定的第二条生命线，不读取屏幕内容",
-                ok = keepAlive.accessibilityEnabled,
-                actionLabel = if (keepAlive.accessibilityEnabled) null else "去开启",
-                onAction = { vm.openAccessibilitySettings() },
-            )
-            AdvancedRow(
-                label = "修复通知监听",
-                desc = "监听断连且无法自愈时的强制修复（需 Shizuku 已授权或 Root）",
-                ok = keepAlive.listenerEnabled,
-                actionLabel = "修复",
-                onAction = { vm.repairListener() },
+            ArrowPreference(
+                title = "高级权限",
+                summary = "Shizuku / Root / LSPosed / 无障碍 / 修复监听",
+                onClick = onOpenAdvanced,
             )
         }
 
@@ -648,34 +621,6 @@ private fun UpdateStatusDialog(title: String, text: String, confirm: String?, on
             )
         }
     }
-}
-
-@Composable
-private fun AdvancedRow(label: String, desc: String, ok: Boolean, actionLabel: String?, onAction: () -> Unit) {
-    BasicComponent(
-        title = label,
-        summary = desc,
-        endActions = {
-            Text(
-                if (ok) "可用" else "不可用",
-                fontSize = MiuixTheme.textStyles.body2.fontSize,
-                color = if (ok) {
-                    MiuixTheme.colorScheme.onSurfaceVariantActions
-                } else {
-                    MiuixTheme.colorScheme.disabledOnSecondaryVariant
-                },
-            )
-            if (actionLabel != null) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    actionLabel,
-                    fontSize = MiuixTheme.textStyles.body2.fontSize,
-                    color = MiuixTheme.colorScheme.primary,
-                )
-            }
-        },
-        onClick = onAction,
-    )
 }
 
 @Composable

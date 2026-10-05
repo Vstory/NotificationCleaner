@@ -9,9 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -44,6 +41,9 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -121,7 +121,7 @@ fun RulesScreen(
                 }
             }) {
                 Icon(
-                    Icons.Filled.Add,
+                    MiuixIcons.Add,
                     contentDescription = if (tab == 0) "新建规则" else "添加白名单",
                     tint = MiuixTheme.colorScheme.onPrimary,
                 )
@@ -196,7 +196,7 @@ private fun RuleCard(rule: RuleEntity, hitCount: Int, onToggle: (Boolean) -> Uni
             title = rule.appName,
             summary = ruleSummaryText(rule, hitCount),
             endActions = {
-                IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "删除") }
+                IconButton(onClick = onDelete) { Icon(MiuixIcons.Delete, contentDescription = "删除") }
             },
         )
     }
@@ -209,7 +209,7 @@ private fun WhitelistCard(item: WhitelistEntity, onRemove: () -> Unit) {
             title = item.appName,
             summary = item.packageName,
             endActions = {
-                IconButton(onClick = onRemove) { Icon(Icons.Filled.Delete, contentDescription = "移除") }
+                IconButton(onClick = onRemove) { Icon(MiuixIcons.Delete, contentDescription = "移除") }
             },
         )
     }

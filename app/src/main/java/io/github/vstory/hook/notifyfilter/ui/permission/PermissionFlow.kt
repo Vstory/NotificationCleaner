@@ -256,8 +256,14 @@ private fun PermissionCard(
                     null -> MiuixTheme.colorScheme.onSurfaceVariantSummary
                 },
             )
-            TextButton(text = buttonText, onClick = onJump)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                buttonText,
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            )
         },
+        onClick = onJump,
     )
 }
 
@@ -307,6 +313,7 @@ fun PermissionLostDialog(
                 TextButton(
                     text = "自启动设置",
                     onClick = { activity?.let { jumpToAutoStart(it) } },
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
                 )
                 Spacer(Modifier.width(8.dp))
                 TextButton(text = "暂不处理", onClick = onDismiss)
@@ -319,6 +326,13 @@ fun PermissionLostDialog(
 private fun LostPermRow(name: String, onJump: () -> Unit) {
     BasicComponent(
         title = name,
-        endActions = { TextButton(text = "去授权", onClick = onJump) },
+        endActions = {
+            Text(
+                "去授权",
+                fontSize = MiuixTheme.textStyles.body2.fontSize,
+                color = MiuixTheme.colorScheme.primary,
+            )
+        },
+        onClick = onJump,
     )
 }

@@ -8,12 +8,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-// 1.3.2（P3-7①）：material-icons-extended → core（History/Rule 为 extended 独有，
-// 就近替换为 core 内语义相近图标，debug DEX 体积显著缩小）
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,12 +34,17 @@ import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerScreen
 import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession
 import io.github.vstory.hook.notifyfilter.ui.rules.RuleEditScreen
 import io.github.vstory.hook.notifyfilter.ui.rules.RulesScreen
+import io.github.vstory.hook.notifyfilter.ui.settings.AdvancedPermissionScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.SettingsScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.StatsDetailScreen
 import kotlinx.coroutines.Dispatchers
 import top.yukonga.miuix.kmp.basic.NavigationBar
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.ListView
+import top.yukonga.miuix.kmp.icon.extended.Recent
+import top.yukonga.miuix.kmp.icon.extended.Settings
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -229,9 +228,9 @@ class MainActivity : ComponentActivity() {
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("history", "历史", Icons.Filled.DateRange),
-    Tab("rules", "规则", Icons.AutoMirrored.Filled.List),
-    Tab("settings", "设置", Icons.Filled.Settings),
+    Tab("history", "历史", MiuixIcons.Recent),
+    Tab("rules", "规则", MiuixIcons.ListView),
+    Tab("settings", "设置", MiuixIcons.Settings),
 )
 
 @Composable
@@ -291,10 +290,14 @@ private fun MainNavHost(navController: androidx.navigation.NavHostController, mo
             SettingsScreen(
                 onOpenStats = { navController.navigate("stats/$it") },
                 onOpenOpenSource = { navController.navigate("opensource") },
+                onOpenAdvanced = { navController.navigate("advanced") },
             )
         }
         composable("opensource") {
             io.github.vstory.hook.notifyfilter.ui.settings.OpenSourceScreen(onBack = { navController.popBackStack() })
+        }
+        composable("advanced") {
+            AdvancedPermissionScreen(onBack = { navController.popBackStack() })
         }
         composable("stats/{mode}") { entry ->
             val mode = entry.arguments?.getString("mode") ?: "filtered"
