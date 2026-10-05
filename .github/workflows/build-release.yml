@@ -322,15 +322,25 @@ jobs:
           fi
           echo "  ✅ 签名有效，指纹与固定密钥一致：$ACTUAL"
 
+          # ⑦ 签名方案：v3 必有（API 28+ 的校验路径）。v2 **只在 minSdk < 28 时才产出** ——
+          #    apksig 判定 minSdk ≥ 28 时 v2 冗余，显式 enableV2Signing=true 也不写
+          #    （实测 minSdk 33/28 ⇒ 仅 v3；26 ⇒ v2+v3）。故按源码 minSdk 决定是否要求 v2。
+          #    不断言 v1：它只服务 Android ≤6.0，本项目 minSdk ≥ 26，断言它必然误报。
+          MINSDK="$(sed -nE 's/^[[:space:]]*minSdk = ([0-9]+).*/\1/p' app/build.gradle.kts | head -1)"
+          case "$MINSDK" in
+            ''|*[!0-9]*) echo "::error::读不到 minSdk（app/build.gradle.kts）"; exit 1 ;;
+          esac
           VERBOSE="$("$APKSIGNER" verify --verbose "$APK" 2>&1 || true)"
-          for scheme in v2 v3; do
+          SCHEMES="v3"
+          if [ "$MINSDK" -lt 28 ]; then SCHEMES="v2 v3"; fi
+          for scheme in $SCHEMES; do
             printf '%s' "$VERBOSE" | grep -qE "Verified using ${scheme} scheme.*: true" \
-              || { echo "::error::$NAME 未启用 ${scheme} 签名方案 —— 拒绝发布"; printf '%s\n' "$VERBOSE"; exit 1; }
+              || { echo "::error::$NAME 未启用 ${scheme} 签名方案（minSdk=${MINSDK}）—— 拒绝发布"; printf '%s\n' "$VERBOSE"; exit 1; }
           done
-          echo "  ✅ 签名方案含 v2 + v3"
+          echo "  ✅ 签名方案含 ${SCHEMES// /+}（minSdk=${MINSDK}）"
 
           echo "CERT_SHA256=$ACTUAL" >> "$GITHUB_ENV"
-          echo "SIGN_SCHEMES=v2+v3" >> "$GITHUB_ENV"
+          echo "SIGN_SCHEMES=${SCHEMES// /+}" >> "$GITHUB_ENV"
 
       # 正文：人工文件**原样**发布，不加任何自动内容 —— 正文的用途是让用户在触发前先确认
       #   「页面会写什么」，加了料这句就落空了。文件名带版本：否则忘更新文件时，新版页会静默沿用

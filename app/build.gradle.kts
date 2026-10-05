@@ -50,6 +50,8 @@ android {
                 keyPassword = localProps.getProperty("keyPassword")
                 // v1（JAR 签名）只对 API < 24 有意义，本项目 minSdk 33 ⇒ 关；
                 // v3 是 API 28+ 的校验路径，AGP 默认不开，须显式启用；v4 会多产 .idsig，本项目不分发
+                // ⚠️ enableV2Signing 对本项目是空配置：apksig 在 minSdk ≥ 28 时判定 v2 冗余，
+                //    这里写 true 也不产出 v2（实测产物仅 v3）。留着只为将来降 minSdk 时自动生效。
                 enableV1Signing = false
                 enableV2Signing = true
                 enableV3Signing = true
