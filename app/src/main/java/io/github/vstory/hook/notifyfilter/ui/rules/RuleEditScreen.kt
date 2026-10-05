@@ -1,6 +1,5 @@
 package io.github.vstory.hook.notifyfilter.ui.rules
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -37,17 +37,17 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.DropdownEntry
-import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.menu.OverlayDropdownMenu
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class RuleEditViewModel(private val dao: RuleDao) : ViewModel() {
@@ -110,24 +110,26 @@ fun RuleEditScreen(
             Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
         ) {
             // ---- 选中 APP ----
-            Button(
-                onClick = {
-                    AppPickerSession.initial = selectedApps
-                    openAppPicker()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (selectedApps.isEmpty()) "选择 APP（可多选）" else "已选 ${selectedApps.size} 个 APP（点击修改）")
-            }
-            selectedApps.forEach { (pkg, label) ->
-                Text("  · $label", style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.outline)
+            Card(Modifier.fillMaxWidth()) {
+                ArrowPreference(
+                    title = "选择 APP",
+                    summary = if (selectedApps.isEmpty()) {
+                        "可多选，至少选择一个"
+                    } else {
+                        selectedApps.joinToString("、") { it.second }
+                    },
+                    onClick = {
+                        AppPickerSession.initial = selectedApps
+                        openAppPicker()
+                    },
+                )
             }
             Spacer(Modifier.height(12.dp))
 
             // ---- 条件关系 ----
             Text("条件满足方式", style = MiuixTheme.textStyles.body1)
             Spacer(Modifier.height(8.dp))
-            TabRow(
+            TabRowWithContour(
                 tabs = listOf("并且", "或者"),
                 selectedTabIndex = if (join == "AND") 0 else 1,
                 onTabSelected = { join = if (it == 0) "AND" else "OR" },
@@ -165,6 +167,7 @@ fun RuleEditScreen(
                     onBack()
                 },
                 modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary(),
             ) { Text("保存规则") }
             Spacer(Modifier.height(24.dp))
         }
@@ -180,43 +183,42 @@ private fun ConditionCard(
     onDelete: () -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("条件 ${index + 1}", style = MiuixTheme.textStyles.body1, modifier = Modifier.weight(1f))
+        Column(Modifier.padding(vertical = 12.dp)) {
+            Row(
+                Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "条件 ${index + 1}",
+                    style = MiuixTheme.textStyles.headline1,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
+                )
                 if (canDelete) {
                     IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "删除条件") }
                 }
             }
             Spacer(Modifier.height(8.dp))
             // 字段
-            TabRow(
+            TabRowWithContour(
                 tabs = listOf("标题", "内容"),
                 selectedTabIndex = if (condition.field == MATCH_TITLE) 0 else 1,
                 onTabSelected = {
                     onChange(condition.copy(field = if (it == 0) MATCH_TITLE else MATCH_CONTENT))
                 },
+                modifier = Modifier.padding(horizontal = 16.dp),
             )
             Spacer(Modifier.height(8.dp))
             // 模式（下拉）
-            OverlayDropdownMenu(
-                entries = listOf(
-                    DropdownEntry(
-                        items = MatchMode.all.map { (mode, label) ->
-                            DropdownItem(
-                                text = label,
-                                selected = condition.mode == mode,
-                                onClick = { onChange(condition.copy(mode = mode)) },
-                            )
-                        },
-                    ),
-                ),
+            OverlayDropdownPreference(
+                items = MatchMode.all.map { it.second },
+                selectedIndex = MatchMode.all.indexOfFirst { it.first == condition.mode },
                 title = "匹配方式",
-                summary = MatchMode.label(condition.mode),
-                modifier = Modifier.fillMaxWidth(),
+                onSelectedIndexChange = { idx -> onChange(condition.copy(mode = MatchMode.all[idx].first)) },
             )
-            Spacer(Modifier.height(8.dp))
             // 文本值（多行；ALL_TEXT 不需要输入）
             if (condition.mode != MatchMode.ALL_TEXT) {
+                Spacer(Modifier.height(8.dp))
                 TextField(
                     value = condition.values.joinToString("\n"),
                     onValueChange = { raw ->
@@ -228,7 +230,7 @@ private fun ConditionCard(
                     },
                     useLabelAsPlaceholder = true,
                     minLines = 2,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 )
             }
         }
