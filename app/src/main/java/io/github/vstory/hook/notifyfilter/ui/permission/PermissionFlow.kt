@@ -25,13 +25,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -171,7 +172,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(16.dp),
     ) {
         Spacer(Modifier.height(16.dp))
         Text("欢迎使用通知净化器", style = MiuixTheme.textStyles.title2, fontWeight = FontWeight.Bold)
@@ -183,46 +184,46 @@ fun OnboardingScreen(onFinish: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
 
-        PermissionCard(
-            title = "通知读取权限",
-            desc = "核心权限：监听并过滤通知栏消息。不授权本应用无法工作。",
-            statusText = if (status.listenerEnabled) "已授权" else "未授权",
-            granted = status.listenerEnabled,
-            buttonText = "去授权",
-            onJump = { jumpToListenerSettings(context) },
-        )
-        Spacer(Modifier.height(12.dp))
-        PermissionCard(
-            title = "省电策略（无限制）",
-            desc = "将省电策略设为无限制/忽略电池优化，防止后台过滤服务被系统杀死。",
-            statusText = if (status.batteryWhitelisted) "已设置" else "未设置",
-            granted = status.batteryWhitelisted,
-            buttonText = "去设置",
-            onJump = { jumpToBatterySettings(context) },
-        )
-        Spacer(Modifier.height(12.dp))
-        PermissionCard(
-            title = "通知发送权限",
-            desc = "Android 13+ 需要授权才能显示常驻保活通知与更新提醒（点击授权）。",
-            statusText = if (status.notificationsGranted) "已授权" else "未授权",
-            granted = status.notificationsGranted,
-            buttonText = "去授权",
-            onJump = { jumpToAppNotificationSettings(context) },
-        )
-        Spacer(Modifier.height(12.dp))
-        PermissionCard(
-            title = "自启动权限",
-            desc = "允许开机自启与后台拉起（厂商手机必需）。系统无检测接口，请手动确认已开启。",
-            statusText = "请手动确认",
-            granted = null,
-            buttonText = "去设置",
-            onJump = { jumpToAutoStart(context) },
-        )
+        Card(Modifier.fillMaxWidth()) {
+            PermissionCard(
+                title = "通知读取权限",
+                desc = "核心权限：监听并过滤通知栏消息。不授权本应用无法工作。",
+                statusText = if (status.listenerEnabled) "已授权" else "未授权",
+                granted = status.listenerEnabled,
+                buttonText = "去授权",
+                onJump = { jumpToListenerSettings(context) },
+            )
+            PermissionCard(
+                title = "省电策略（无限制）",
+                desc = "将省电策略设为无限制/忽略电池优化，防止后台过滤服务被系统杀死。",
+                statusText = if (status.batteryWhitelisted) "已设置" else "未设置",
+                granted = status.batteryWhitelisted,
+                buttonText = "去设置",
+                onJump = { jumpToBatterySettings(context) },
+            )
+            PermissionCard(
+                title = "通知发送权限",
+                desc = "Android 13+ 需要授权才能显示常驻保活通知与更新提醒（点击授权）。",
+                statusText = if (status.notificationsGranted) "已授权" else "未授权",
+                granted = status.notificationsGranted,
+                buttonText = "去授权",
+                onJump = { jumpToAppNotificationSettings(context) },
+            )
+            PermissionCard(
+                title = "自启动权限",
+                desc = "允许开机自启与后台拉起（厂商手机必需）。系统无检测接口，请手动确认已开启。",
+                statusText = "请手动确认",
+                granted = null,
+                buttonText = "去设置",
+                onJump = { jumpToAutoStart(context) },
+            )
+        }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
         Button(
             onClick = onFinish,
             modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColorsPrimary(),
         ) { Text("完成初始化", style = MiuixTheme.textStyles.button) }
         Spacer(Modifier.height(8.dp))
         Text(
@@ -242,33 +243,22 @@ private fun PermissionCard(
     buttonText: String,
     onJump: () -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MiuixTheme.textStyles.headline2, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    statusText,
-                    style = MiuixTheme.textStyles.footnote2,
-                    color = when (granted) {
-                        true -> MiuixTheme.colorScheme.primary
-                        false -> MiuixTheme.colorScheme.error
-                        null -> MiuixTheme.colorScheme.onSurfaceVariantSummary
-                    },
-                )
-            }
-            Spacer(Modifier.height(4.dp))
+    BasicComponent(
+        title = title,
+        summary = desc,
+        endActions = {
             Text(
-                desc,
+                statusText,
                 style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                color = when (granted) {
+                    true -> MiuixTheme.colorScheme.primary
+                    false -> MiuixTheme.colorScheme.error
+                    null -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+                },
             )
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(onClick = onJump) { Text(buttonText, style = MiuixTheme.textStyles.button) }
-            }
-        }
-    }
+            TextButton(text = buttonText, onClick = onJump)
+        },
+    )
 }
 
 /**
@@ -327,12 +317,8 @@ fun PermissionLostDialog(
 
 @Composable
 private fun LostPermRow(name: String, onJump: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(name, style = MiuixTheme.textStyles.body2)
-        TextButton(text = "去授权", onClick = onJump)
-    }
+    BasicComponent(
+        title = name,
+        endActions = { TextButton(text = "去授权", onClick = onJump) },
+    )
 }
