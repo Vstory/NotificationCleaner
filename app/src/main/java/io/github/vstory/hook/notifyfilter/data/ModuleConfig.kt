@@ -19,7 +19,18 @@ data class ModuleConfig(
     val deltaVersion: Long = 0L,
     val whitelist: List<String> = emptyList(),
     val rules: List<ModuleRule> = emptyList(),
-)
+    // 通知类型保护：默认 true = 既有行为。decode 用 ignoreUnknownKeys，老 config 缺这几个键时
+    // 解出来仍是全保护，不会因为升级让原本被保护的通知突然进入判定
+    val protectMedia: Boolean = true,
+    val protectConversation: Boolean = true,
+    val protectOngoing: Boolean = true,
+) {
+    fun protection(): ProtectTypes = ProtectTypes(
+        media = protectMedia,
+        conversation = protectConversation,
+        ongoing = protectOngoing,
+    )
+}
 
 @Serializable
 data class ModuleRule(

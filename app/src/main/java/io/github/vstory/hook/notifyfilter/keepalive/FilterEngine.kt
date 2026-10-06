@@ -84,10 +84,13 @@ internal class FilterEngine {
         val joined = listOf(content, bigText).filter { it.isNotEmpty() }.distinct().joinToString(" ")
         if (title.isEmpty() && joined.isEmpty()) return null
 
-        // 内置保护类型：与 NotificationProtector 相同语义，媒体/对话/常驻不过滤
-        if (NotificationProtector.classifyType(notification) != null) return null
-
+        // 配置取一次快照：保护开关与后续阈值/拦截模式必须来自同一个 config，
+        // 否则热更新正好落在两行之间时会出现「按新开关放行、按旧阈值打分」
         val cfg = config
+
+        // 内置保护类型：与 NotificationProtector 相同语义，媒体/对话/常驻不过滤（开关随 config 下发）
+        if (NotificationProtector.classifyType(notification, cfg.protection()) != null) return null
+
         // 规则（先于白名单，与 NLS 一致：白名单 APP 仍受规则约束）
         val snapshot = compiledRules
         for (rule in snapshot) {

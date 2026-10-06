@@ -36,6 +36,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.ServiceLocator
+import io.github.vstory.hook.notifyfilter.data.ProtectTypes
 import io.github.vstory.hook.notifyfilter.data.SettingsRepository
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveStatus
@@ -77,6 +78,7 @@ class SettingsViewModel(
     val threshold = settings.threshold.stateIn(viewModelScope, SharingStarted.Eagerly, 0.8f)
     val interceptMode = settings.interceptMode.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val excludeFromRecents = settings.excludeFromRecents.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val protectTypes = settings.protectTypes.stateIn(viewModelScope, SharingStarted.Eagerly, ProtectTypes())
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
@@ -131,6 +133,11 @@ class SettingsViewModel(
 
     fun setExcludeFromRecents(v: Boolean) {
         viewModelScope.launch { settings.setExcludeFromRecents(v) }
+    }
+
+    /** 通知类型保护（整组写回：三个开关共用一次 DataStore edit，避免部分落盘） */
+    fun setProtectTypes(v: ProtectTypes) {
+        viewModelScope.launch { settings.setProtectTypes(v) }
     }
 
     // ---- LSPosed 框架服务状态（Dev 7：libxposed service 绑定 + 作用域）----
@@ -270,6 +277,7 @@ fun SettingsScreen(
     val threshold by vm.threshold.collectAsState()
     val intercept by vm.interceptMode.collectAsState()
     val excludeRecents by vm.excludeFromRecents.collectAsState()
+    val protect by vm.protectTypes.collectAsState()
     val filteredCount by vm.filteredCount.collectAsState()
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
@@ -379,6 +387,40 @@ fun SettingsScreen(
                             valueRange = 0.5f..1.0f,
                             steps = 9,
                             onValueChangeFinished = { vm.setThreshold(thresholdDraft) },
+                        )
+                    },
+                ),
+            )
+
+            // 判定类型的开关：详情面板会显示「媒体/对话/常驻通知 — 不参与过滤」，
+            // 这里就是它的控制入口（与通知滤盒「过滤范围 → 通知类型」同义）
+            item { SmallTitle(stringResource(R.string.settings_group_protect)) }
+            groupedCardItems(
+                keyPrefix = "settings_protect",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("protectMedia") {
+                        SwitchPreference(
+                            checked = protect.media,
+                            onCheckedChange = { vm.setProtectTypes(protect.copy(media = it)) },
+                            title = stringResource(R.string.settings_protect_media),
+                            summary = stringResource(R.string.settings_protect_media_summary),
+                        )
+                    },
+                    CardItem("protectConversation") {
+                        SwitchPreference(
+                            checked = protect.conversation,
+                            onCheckedChange = { vm.setProtectTypes(protect.copy(conversation = it)) },
+                            title = stringResource(R.string.settings_protect_conversation),
+                            summary = stringResource(R.string.settings_protect_conversation_summary),
+                        )
+                    },
+                    CardItem("protectOngoing") {
+                        SwitchPreference(
+                            checked = protect.ongoing,
+                            onCheckedChange = { vm.setProtectTypes(protect.copy(ongoing = it)) },
+                            title = stringResource(R.string.settings_protect_ongoing),
+                            summary = stringResource(R.string.settings_protect_ongoing_summary),
                         )
                     },
                 ),

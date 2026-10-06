@@ -53,6 +53,27 @@ class SettingsRepository(private val context: Context) {
     /** 在系统多任务界面隐藏本 APP 的后台卡片（防误滑删除，切换后重建任务生效） */
     val excludeFromRecents: Flow<Boolean> = context.dataStore.data.map { it[keyHideRecents] ?: false }
 
+    // ---- 通知类型保护（默认全开 = 改造前行为）----
+    private val keyProtectMedia = booleanPreferencesKey("protect_media")
+    private val keyProtectConversation = booleanPreferencesKey("protect_conversation")
+    private val keyProtectOngoing = booleanPreferencesKey("protect_ongoing")
+
+    val protectTypes: Flow<ProtectTypes> = context.dataStore.data.map { p ->
+        ProtectTypes(
+            media = p[keyProtectMedia] ?: true,
+            conversation = p[keyProtectConversation] ?: true,
+            ongoing = p[keyProtectOngoing] ?: true,
+        )
+    }
+
+    suspend fun setProtectTypes(value: ProtectTypes) {
+        context.dataStore.edit {
+            it[keyProtectMedia] = value.media
+            it[keyProtectConversation] = value.conversation
+            it[keyProtectOngoing] = value.ongoing
+        }
+    }
+
     // ---- 外观与主题（外观与主题子页；底栏形态与样式同属这里的 ThemeConfig）----
     private val keyFloatingNavBar = booleanPreferencesKey("floating_nav_bar")
     private val keyFloatingNavBarStyle = stringPreferencesKey("floating_nav_bar_style")

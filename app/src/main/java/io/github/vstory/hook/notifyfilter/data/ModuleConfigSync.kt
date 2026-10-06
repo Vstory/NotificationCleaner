@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * APP → LSPosed 模块配置同步（1.2.1）：
- * - 规则/白名单/阈值/拦截模式任一变化 → 500ms 防抖后编码 [ModuleConfig] 写入
+ * - 规则/白名单/阈值/拦截模式/通知类型保护任一变化 → 500ms 防抖后编码 [ModuleConfig] 写入
  *   自身 SharedPreferences（[ModuleConfigCodec.PREFS_NAME]，libxposed 映射为模块远程偏好）
  * - delta 版本变化 或 Xposed 服务绑定完成 → 经 openRemoteFile 推送 delta 二进制并写版本号
  *
@@ -43,12 +43,11 @@ class ModuleConfigSync(
                 whitelistDao.listAll(),
                 ServiceLocator.settings.threshold,
                 ServiceLocator.settings.interceptMode,
-                ServiceLocator.modelRepo.deltaVersion,
-            ) { rules, whitelist, threshold, intercept, deltaV ->
+                ServiceLocator.settings.protectTypes,
+            ) { rules, whitelist, threshold, intercept, protect ->
                 ModuleConfig(
                     threshold = threshold,
                     interceptMode = intercept,
-                    deltaVersion = deltaV,
                     whitelist = whitelist.map { it.packageName },
                     rules = rules.map { r ->
                         val set = r.conditionSet()
@@ -61,8 +60,16 @@ class ModuleConfigSync(
                             },
                         )
                     },
+                    protectMedia = protect.media,
+                    protectConversation = protect.conversation,
+                    protectOngoing = protect.ongoing,
                 )
             }
+                // deltaVersion 不是判定参数，单独并在外层：带类型的 combine 重载最多 5 个流，
+                // 再塞一个只能退化成 Array<Any> 强转
+                .combine(ServiceLocator.modelRepo.deltaVersion) { config, deltaV ->
+                    config.copy(deltaVersion = deltaV)
+                }
                 .debounce(500)
                 .collect { config ->
                     prefs.edit()

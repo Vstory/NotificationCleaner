@@ -12,6 +12,7 @@ import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.ai.SpamModel
 import io.github.vstory.hook.notifyfilter.ai.takeCodepoints
 import io.github.vstory.hook.notifyfilter.data.ModelRepository
+import io.github.vstory.hook.notifyfilter.data.ProtectTypes
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_AI
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_RULE
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_PASSED
@@ -89,6 +90,11 @@ class CleanerListenerService : NotificationListenerService() {
         var cachedIntercept: Boolean = true
             private set
 
+        /** 通知类型保护：与阈值同款内存缓存，决策热路径零 IO */
+        @Volatile
+        var cachedProtect: ProtectTypes = ProtectTypes()
+            private set
+
         private val appNameCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
         /** 入库互斥：并发 onNotificationPosted 处理时防止查重-插入竞态双插 */
@@ -117,6 +123,9 @@ class CleanerListenerService : NotificationListenerService() {
                 }
                 appScope!!.launch {
                     ServiceLocator.settings.interceptMode.collect { cachedIntercept = it }
+                }
+                appScope!!.launch {
+                    ServiceLocator.settings.protectTypes.collect { cachedProtect = it }
                 }
                 // 1.3.2（P0-5）：应用名缓存预热——distinctApps 一次查询回填，
                 // 决策路径对已见过的包名不再做 PackageManager IPC
@@ -386,7 +395,7 @@ class CleanerListenerService : NotificationListenerService() {
         var decision = DECISION_PASSED
         var probability = 0f
 
-        val protectedType = NotificationProtector.classifyType(notification)
+        val protectedType = NotificationProtector.classifyType(notification, cachedProtect)
         when {
             // 内置保护类型：媒体/对话/常驻通知完全不参与过滤，仅入库留档
             protectedType != null -> decision = protectedType

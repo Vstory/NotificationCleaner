@@ -116,6 +116,13 @@
     <string name="settings_intercept">Intercept mode</string>
     <string name="settings_intercept_summary">When off, notifications are only flagged, never blocked</string>
     <string name="settings_threshold">Filter threshold</string>
+    <string name="settings_group_protect">Notification type protection</string>
+    <string name="settings_protect_media">Media notifications</string>
+    <string name="settings_protect_media_summary">Never filtered (music and video playback controls)</string>
+    <string name="settings_protect_conversation">Conversation notifications</string>
+    <string name="settings_protect_conversation_summary">Never filtered (chats; SMS excluded)</string>
+    <string name="settings_protect_ongoing">Ongoing notifications</string>
+    <string name="settings_protect_ongoing_summary">Never filtered (download progress, calls, etc.)</string>
     <string name="settings_group_model">Model &amp; Data</string>
     <string name="settings_ai_model">AI Model</string>
     <string name="settings_ai_model_summary">Baseline NSPM v2</string>

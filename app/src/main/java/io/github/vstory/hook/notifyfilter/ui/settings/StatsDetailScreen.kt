@@ -244,7 +244,7 @@ fun StatsDetailScreen(
                 style = MiuixTheme.textStyles.footnote1,
             )
             Spacer(Modifier.height(20.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 TextButton(
                     text = "取消",
                     onClick = { confirmAll = false },

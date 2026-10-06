@@ -116,6 +116,13 @@
     <string name="settings_intercept">拦截模式</string>
     <string name="settings_intercept_summary">关闭后仅标记不拦截，便于观察误杀</string>
     <string name="settings_threshold">过滤阈值</string>
+    <string name="settings_group_protect">通知类型保护</string>
+    <string name="settings_protect_media">媒体通知</string>
+    <string name="settings_protect_media_summary">不参与过滤（音乐、视频播放控件）</string>
+    <string name="settings_protect_conversation">对话通知</string>
+    <string name="settings_protect_conversation_summary">不参与过滤（各类对话通知，短信除外）</string>
+    <string name="settings_protect_ongoing">常驻通知</string>
+    <string name="settings_protect_ongoing_summary">不参与过滤（下载进度条、来电等）</string>
     <string name="settings_group_model">模型与数据</string>
     <string name="settings_ai_model">AI 模型</string>
     <string name="settings_ai_model_summary">基线 NSPM v2</string>

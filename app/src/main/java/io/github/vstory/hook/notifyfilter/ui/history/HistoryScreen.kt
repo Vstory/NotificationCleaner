@@ -889,14 +889,17 @@ private fun VersionRow(v: NotificationEntity) {
 }
 
 /**
- * 学习方向按钮。1.1.11：已学习的通知也允许再次点击学习（同方向重复点击累积权重）；
- * 方向是一次标注选择、两者无主次 → 同用 primary（默认灰底在浅色下与卡片几乎同色）。
+ * 学习方向按钮。1.1.11：已学习的通知也允许再次点击学习（同方向重复点击累积权重）。
+ *
+ * 成对互斥选项照 miuix 官方范式（`example/.../component/ArrowSection.kt`）：两枚 `TextButton`
+ * + `weight(1f)` + 20dp 间隔，而不是两枚主色实心按钮 —— 后者既不符合这对按钮「无主次」的语义，
+ * 也看不出已学的是哪个方向。当前方向改用主色变体，另一方向保持默认灰底（颜色按角色分层）。
  */
 @Composable
 private fun LearnButtons(n: NotificationEntity, onLearn: (Int) -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         val adText = if (n.learned && n.learnLabel == 1) {
             stringResource(R.string.detail_learn_ad_again, n.learnCount + 1)
@@ -908,16 +911,26 @@ private fun LearnButtons(n: NotificationEntity, onLearn: (Int) -> Unit) {
         } else {
             stringResource(R.string.detail_learn_normal)
         }
-        Button(
+        TextButton(
+            text = adText,
             onClick = { onLearn(1) },
             modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColorsPrimary(),
-        ) { Text(adText, style = MiuixTheme.textStyles.button) }
-        Button(
+            colors = if (n.learned && n.learnLabel == 1) {
+                ButtonDefaults.textButtonColorsPrimary()
+            } else {
+                ButtonDefaults.textButtonColors()
+            },
+        )
+        TextButton(
+            text = normalText,
             onClick = { onLearn(0) },
             modifier = Modifier.weight(1f),
-            colors = ButtonDefaults.buttonColorsPrimary(),
-        ) { Text(normalText, style = MiuixTheme.textStyles.button) }
+            colors = if (n.learned && n.learnLabel == 0) {
+                ButtonDefaults.textButtonColorsPrimary()
+            } else {
+                ButtonDefaults.textButtonColors()
+            },
+        )
     }
 }
 
