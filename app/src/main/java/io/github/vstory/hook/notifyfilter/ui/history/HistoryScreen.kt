@@ -262,15 +262,15 @@ fun HistoryScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                TabRow(
-                    tabs = listOf("正显示", "已取消", "历史"),
-                    selectedTabIndex = HistoryTab.entries.indexOf(tab),
-                    onTabSelected = { vm.setTab(HistoryTab.entries[it]) },
-                )
-            }
+            TabRow(
+                tabs = listOf("正显示", "已取消", "历史"),
+                selectedTabIndex = HistoryTab.entries.indexOf(tab),
+                onTabSelected = { vm.setTab(HistoryTab.entries[it]) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp),
+            )
             if (list.isEmpty()) {
                 Column(
                     Modifier.fillMaxSize(),
