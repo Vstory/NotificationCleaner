@@ -25,6 +25,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
@@ -41,9 +42,9 @@ import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerScreen
 import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession
 import io.github.vstory.hook.notifyfilter.ui.rules.RuleEditScreen
 import io.github.vstory.hook.notifyfilter.ui.rules.RulesScreen
+import io.github.vstory.hook.notifyfilter.ui.settings.AboutScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.AdvancedPermissionScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.AiModelScreen
-import io.github.vstory.hook.notifyfilter.ui.settings.OpenSourceScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.SettingsScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.StatsDetailScreen
 import kotlinx.coroutines.Dispatchers
@@ -281,8 +282,12 @@ fun MainScaffold() {
                     onOpenLearned = { navigator.push(Route.Stats("learned")) },
                 )
             }
-            entry<Route.OpenSource>(swipeDismiss = swipeDismiss) {
-                OpenSourceScreen(onBack = { navigator.pop() })
+            entry<Route.About>(swipeDismiss = swipeDismiss) {
+                val uriHandler = LocalUriHandler.current
+                AboutScreen(
+                    onBack = { navigator.pop() },
+                    onOpenUrl = { url -> uriHandler.openUri(url) },
+                )
             }
             entry<Route.Stats>(swipeDismiss = swipeDismiss) { route ->
                 StatsDetailScreen(route.mode, onBack = { navigator.pop() })
@@ -364,7 +369,7 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
                 else -> SettingsScreen(
                     bottomPadding = bottomPadding,
                     onOpenStats = { navigator.push(Route.Stats(it)) },
-                    onOpenOpenSource = { navigator.push(Route.OpenSource) },
+                    onOpenAbout = { navigator.push(Route.About) },
                     onOpenAdvanced = { navigator.push(Route.Advanced) },
                     onOpenAiModel = { navigator.push(Route.AiModel) },
                 )

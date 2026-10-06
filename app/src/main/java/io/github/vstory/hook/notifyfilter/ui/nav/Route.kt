@@ -21,7 +21,7 @@ sealed interface Route : NavKey {
     data object AiModel : Route
 
     @Serializable
-    data object OpenSource : Route
+    data object About : Route
 
     @Serializable
     data object RuleEdit : Route

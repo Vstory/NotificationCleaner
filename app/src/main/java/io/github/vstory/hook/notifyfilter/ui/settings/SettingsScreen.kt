@@ -258,7 +258,7 @@ class SettingsViewModel(
 @Composable
 fun SettingsScreen(
     onOpenStats: (String) -> Unit,
-    onOpenOpenSource: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     onOpenAdvanced: () -> Unit = {},
     onOpenAiModel: () -> Unit = {},
     bottomPadding: Dp = 0.dp,
@@ -556,11 +556,11 @@ fun SettingsScreen(
                             onClick = { updateVm.checkUpdate() },
                         )
                     },
-                    CardItem("openSource") {
+                    CardItem("about") {
                         ArrowPreference(
-                            title = "参考开源项目",
-                            summary = "依赖与参考的开源项目",
-                            onClick = { onOpenOpenSource() },
+                            title = "关于",
+                            summary = "通知净化 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}",
+                            onClick = { onOpenAbout() },
                         )
                     },
                 ),
