@@ -59,29 +59,50 @@ class HistoryViewModel(
 
     val tab = MutableStateFlow(HistoryTab.VISIBLE)
 
+    /**
+     * 搜索模式：展开搜索即跨全部三态查询——用户在「正显示」里搜一条已被拦掉的通知，
+     * 也得搜得到，否则不知道它落在哪个状态里就等于白搜。非搜索模式仍只查当前 tab，
+     * 保住 1.3.2 的按需查询（日常不进搜索就不查三态并集）。
+     */
+    val searchMode = MutableStateFlow(false)
+
     /** 历史搜索（匹配 App 名称/标题/内容，忽略大小写） */
     val search = MutableStateFlow("")
+
+    /**
+     * 收起搜索并清空搜索词。清空必须显式做：miuix InputField 只在 `expanded` 由 true 变 false
+     * 且仍在组合树中时自行清空，而本屏收起是把整个 SearchBar 移出组合树。
+     */
+    fun setSearchMode(on: Boolean) {
+        searchMode.value = on
+        if (!on) search.value = ""
+    }
 
     /** 高级筛选（Dev 6）：App（多选）/ 已学习 / 日期范围 */
     val advancedFilter = MutableStateFlow(HistoryAdvancedFilter())
 
     /**
-     * 历史列表（1.3.2 P2-5：三态下推 SQL）——tab 切换用 flatMapLatest 选择对应查询，
-     * 每次 DB 变更只重查/重映当前 tab 的行（原来每条变更都重查 500 行再内存过滤）；
-     * 搜索 200ms 防抖；显式 flowOn + distinctUntilChanged。
-     * 收益边界：各 tab 仍受 LIMIT 500 约束。
+     * 历史列表（1.3.2 P2-5：三态下推 SQL）——tab 与搜索模式用 flatMapLatest 选择对应查询
+     * （搜索模式查三态并集，见 [searchMode]），每次 DB 变更只重查/重映当前查询的行
+     * （原来每条变更都重查 500 行再内存过滤）；搜索 200ms 防抖；显式 flowOn + distinctUntilChanged。
+     * 收益边界：各查询仍受 LIMIT 500 约束。
      * 决策维度（原「已过滤」tab）与 App/已学习/日期同在窗口内内存过滤——三态 × 决策共 9 组，
      * 不值得为 SQL 下推铺 9 个查询。
      */
     val list: StateFlow<List<NotificationEntity>> =
         combine(
-            tab.flatMapLatest { t ->
-                when (t) {
-                    HistoryTab.VISIBLE -> dao.listVisible()
-                    HistoryTab.DISMISSED -> dao.listDismissed()
-                    HistoryTab.HISTORY -> dao.listHistory()
-                }
-            },
+            combine(tab, searchMode) { t, sm -> t to sm }
+                .flatMapLatest { (t, sm) ->
+                    if (sm) {
+                        dao.listAllStates()
+                    } else {
+                        when (t) {
+                            HistoryTab.VISIBLE -> dao.listVisible()
+                            HistoryTab.DISMISSED -> dao.listDismissed()
+                            HistoryTab.HISTORY -> dao.listHistory()
+                        }
+                    }
+                },
             search.debounce(200),
             advancedFilter,
         ) { rows, q, adv ->

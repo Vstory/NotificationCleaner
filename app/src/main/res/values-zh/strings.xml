@@ -36,4 +36,17 @@
 
     <string name="reason_listener_disconnected">监听连接已断开</string>
     <string name="reason_watchdog_rebind">监听未连接，看门狗已尝试重绑</string>
+
+    <string name="history_tab_visible">正显示</string>
+    <string name="history_tab_dismissed">已取消</string>
+    <string name="history_tab_history">历史</string>
+    <string name="history_search">搜索</string>
+    <string name="history_filter">筛选</string>
+    <string name="history_search_hint">搜索 App / 标题 / 内容</string>
+    <string name="history_cancel">取消</string>
+    <string name="history_no_match">无匹配结果</string>
+    <string name="history_empty_visible">当前没有通知在通知栏</string>
+    <string name="history_empty_dismissed">暂无已取消的通知</string>
+    <string name="history_empty_history">暂无历史版本</string>
+    <string name="history_need_access">请先在系统设置中授予通知监听权限</string>
 </resources>

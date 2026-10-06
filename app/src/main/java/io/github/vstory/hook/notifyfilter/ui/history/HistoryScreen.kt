@@ -10,6 +10,7 @@ import android.service.notification.NotificationListenerService.REASON_LISTENER_
 import android.service.notification.NotificationListenerService.REASON_PACKAGE_BANNED
 import android.service.notification.NotificationListenerService.REASON_SNOOZED
 import android.service.notification.NotificationListenerService.REASON_TIMEOUT
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,15 +20,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -141,6 +138,20 @@ private val dayFmt = DateTimeFormatter.ofPattern("M月d日")
 private fun dayOf(epochMs: Long): LocalDate =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
 
+/** 三态推导：与 DAO 的 listVisible / listDismissed / listHistory 谓词一一对应，供搜索结果分组用 */
+private fun stateOf(n: NotificationEntity): HistoryTab = when {
+    n.seq > 0 -> HistoryTab.HISTORY
+    n.dismissTime < 0 -> HistoryTab.VISIBLE
+    else -> HistoryTab.DISMISSED
+}
+
+@StringRes
+private fun stateTitleRes(t: HistoryTab): Int = when (t) {
+    HistoryTab.VISIBLE -> R.string.history_tab_visible
+    HistoryTab.DISMISSED -> R.string.history_tab_dismissed
+    HistoryTab.HISTORY -> R.string.history_tab_history
+}
+
 @Composable
 fun HistoryScreen(
     vm: HistoryViewModel = viewModel(factory = vmFactory()),
@@ -158,7 +169,7 @@ fun HistoryScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var hadData by remember { mutableStateOf(false) }
     var filterOpen by remember { mutableStateOf(false) }
-    var searchExpanded by remember { mutableStateOf(false) }
+    val searchExpanded by vm.searchMode.collectAsState()
     val advCount = advancedActiveCount(adv)
 
     // 修复：打开页面/切换 tab/首次加载后定位到最新通知（列表顶部）
@@ -196,64 +207,37 @@ fun HistoryScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             BlurredBar(backdrop = backdrop, blurActive = blurActive) {
-                // 搜索收进顶栏图标（方案 A）：展开就地整条换成 miuix SearchBar，省掉常驻占位
-                // 输入条那一行（SearchBarDefaults.InputFieldMinHeight 45dp + 周边距）
-                if (searchExpanded) {
-                    SearchBar(
-                        inputField = {
-                            InputField(
-                                query = search,
-                                onQueryChange = { vm.search.value = it },
-                                onSearch = {},
-                                expanded = true,
-                                onExpandedChange = { if (!it) searchExpanded = false },
-                                label = "搜索 App / 标题 / 内容",
+                // 官方 MainPage 的分层：顶栏与其动作图标常驻，搜索条占内容区首行、其余内容整体让位。
+                // 此前整条替换顶栏，会把「筛选」入口一并挤掉，搜索时无法再调筛选。
+                TopAppBar(
+                    title = stringResource(R.string.app_name),
+                    color = barColor,
+                    scrollBehavior = scrollBehavior,
+                    actions = {
+                        IconButton(onClick = { vm.setSearchMode(!searchExpanded) }) {
+                            Icon(
+                                imageVector = MiuixIcons.Search,
+                                contentDescription = stringResource(R.string.history_search),
+                                tint = if (searchExpanded || search.isNotBlank()) {
+                                    MiuixTheme.colorScheme.primary
+                                } else {
+                                    MiuixTheme.colorScheme.onSurface
+                                },
                             )
-                        },
-                        expanded = true,
-                        onExpandedChange = { if (!it) searchExpanded = false },
-                        outsideEndAction = {
-                            // 不必手动清 query：InputField 收起时会自行清空（miuix 行为）
-                            TextButton(text = "取消", onClick = { searchExpanded = false })
-                        },
-                        content = {},
-                        // SearchBar 自带 12dp 横距但不吃状态栏 inset（TopAppBar 由
-                        // defaultWindowInsetsPadding 处理），这里补上
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
-                    )
-                } else {
-                    TopAppBar(
-                        title = stringResource(R.string.app_name),
-                        color = barColor,
-                        scrollBehavior = scrollBehavior,
-                        actions = {
-                            IconButton(onClick = { searchExpanded = true }) {
-                                Icon(
-                                    imageVector = MiuixIcons.Search,
-                                    contentDescription = "搜索",
-                                    tint = if (search.isNotBlank()) {
-                                        MiuixTheme.colorScheme.primary
-                                    } else {
-                                        MiuixTheme.colorScheme.onSurface
-                                    },
-                                )
-                            }
-                            IconButton(onClick = { filterOpen = true }) {
-                                Icon(
-                                    imageVector = MiuixIcons.Filter,
-                                    contentDescription = "筛选",
-                                    tint = if (advCount > 0) {
-                                        MiuixTheme.colorScheme.primary
-                                    } else {
-                                        MiuixTheme.colorScheme.onSurface
-                                    },
-                                )
-                            }
-                        },
-                    )
-                }
+                        }
+                        IconButton(onClick = { filterOpen = true }) {
+                            Icon(
+                                imageVector = MiuixIcons.Filter,
+                                contentDescription = stringResource(R.string.history_filter),
+                                tint = if (advCount > 0) {
+                                    MiuixTheme.colorScheme.primary
+                                } else {
+                                    MiuixTheme.colorScheme.onSurface
+                                },
+                            )
+                        }
+                    },
+                )
             }
         },
     ) { padding ->
@@ -264,15 +248,48 @@ fun HistoryScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
         ) {
-            TabRowWithContour(
-                tabs = listOf("正显示", "已取消", "历史"),
-                selectedTabIndex = HistoryTab.entries.indexOf(tab),
-                onTabSelected = { vm.setTab(HistoryTab.entries[it]) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 12.dp),
-            )
+            // 搜索条与 Tab 行互斥占同一行：搜索展开即接管该行（官方 MainPage 的让位语义），
+            // 三态选择在搜索模式下无意义——搜索范围已是全部三态
+            if (searchExpanded) {
+                SearchBar(
+                    inputField = {
+                        InputField(
+                            query = search,
+                            onQueryChange = { vm.search.value = it },
+                            onSearch = {},
+                            expanded = true,
+                            onExpandedChange = { if (!it) vm.setSearchMode(false) },
+                            label = stringResource(R.string.history_search_hint),
+                        )
+                    },
+                    expanded = true,
+                    onExpandedChange = { if (!it) vm.setSearchMode(false) },
+                    outsideEndAction = {
+                        TextButton(
+                            text = stringResource(R.string.history_cancel),
+                            onClick = { vm.setSearchMode(false) },
+                        )
+                    },
+                    content = {},
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                )
+            } else {
+                TabRowWithContour(
+                    tabs = listOf(
+                        stringResource(R.string.history_tab_visible),
+                        stringResource(R.string.history_tab_dismissed),
+                        stringResource(R.string.history_tab_history),
+                    ),
+                    selectedTabIndex = HistoryTab.entries.indexOf(tab),
+                    onTabSelected = { vm.setTab(HistoryTab.entries[it]) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                        .padding(bottom = 12.dp),
+                )
+            }
             if (list.isEmpty()) {
                 Column(
                     Modifier.fillMaxSize(),
@@ -280,16 +297,38 @@ fun HistoryScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     val emptyTitle = when {
-                        search.isNotBlank() || !adv.isDefault -> "无匹配结果"
-                        tab == HistoryTab.VISIBLE -> "当前没有通知在通知栏"
-                        tab == HistoryTab.DISMISSED -> "暂无已取消的通知"
-                        else -> "暂无历史版本"
+                        search.isNotBlank() || !adv.isDefault -> stringResource(R.string.history_no_match)
+                        // 搜索模式下列表为空即库内无任何通知（词为空时没有可过滤的条件）
+                        searchExpanded || tab == HistoryTab.VISIBLE ->
+                            stringResource(R.string.history_empty_visible)
+                        tab == HistoryTab.DISMISSED -> stringResource(R.string.history_empty_dismissed)
+                        else -> stringResource(R.string.history_empty_history)
                     }
                     Text(emptyTitle, style = MiuixTheme.textStyles.headline2)
                     // 权限提示只在「正显示」空列表下有意义：另外两个 tab 空是正常态
-                    if (tab == HistoryTab.VISIBLE && search.isBlank() && adv.isDefault) {
+                    if (!searchExpanded && tab == HistoryTab.VISIBLE && search.isBlank() && adv.isDefault) {
                         Spacer(Modifier.height(4.dp))
-                        Text("请先在系统设置中授予通知监听权限", style = MiuixTheme.textStyles.footnote1)
+                        Text(stringResource(R.string.history_need_access), style = MiuixTheme.textStyles.footnote1)
+                    }
+                }
+            } else if (searchExpanded) {
+                // 搜索结果跨三态 → 按状态分组，分组标签与 Tab 行同一套（三态互斥，可直接 groupBy）
+                val byState = remember(list) { list.groupBy { stateOf(it) } }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 12.dp),
+                ) {
+                    HistoryTab.entries.forEach { st ->
+                        val items = byState[st] ?: return@forEach
+                        item(key = "state:$st") { SmallTitle(stringResource(stateTitleRes(st))) }
+                        groupedCardItems(
+                            keyPrefix = "state:$st",
+                            outerBottomPadding = 12.dp,
+                            items = items.map { n ->
+                                CardItem(n.id.toString()) { NotificationRow(n) { vm.select(n) } }
+                            },
+                        )
                     }
                 }
             } else {

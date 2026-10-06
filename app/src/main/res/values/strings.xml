@@ -36,4 +36,17 @@
 
     <string name="reason_listener_disconnected">listener disconnected</string>
     <string name="reason_watchdog_rebind">listener not connected; watchdog already retried</string>
+
+    <string name="history_tab_visible">Visible</string>
+    <string name="history_tab_dismissed">Dismissed</string>
+    <string name="history_tab_history">History</string>
+    <string name="history_search">Search</string>
+    <string name="history_filter">Filter</string>
+    <string name="history_search_hint">Search apps, titles, or content</string>
+    <string name="history_cancel">Cancel</string>
+    <string name="history_no_match">No matches</string>
+    <string name="history_empty_visible">No notifications are showing right now</string>
+    <string name="history_empty_dismissed">No dismissed notifications</string>
+    <string name="history_empty_history">No previous versions</string>
+    <string name="history_need_access">Grant notification access in system settings first</string>
 </resources>

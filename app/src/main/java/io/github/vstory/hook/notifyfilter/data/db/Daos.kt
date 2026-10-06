@@ -82,6 +82,10 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE seq > 0 ORDER BY postTime DESC LIMIT 500")
     fun listHistory(): Flow<List<NotificationEntity>>
 
+    /** 三态并集（搜索模式）：可见/已取消/历史互斥且完备，无 WHERE 即全表此刻的最新视图 */
+    @Query("SELECT * FROM notifications ORDER BY postTime DESC LIMIT 500")
+    fun listAllStates(): Flow<List<NotificationEntity>>
+
     @Query("SELECT * FROM notifications WHERE learned = 1 ORDER BY postTime DESC LIMIT 500")
     fun listLearned(): Flow<List<NotificationEntity>>
 
