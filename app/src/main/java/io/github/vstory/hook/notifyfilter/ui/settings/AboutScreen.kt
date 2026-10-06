@@ -258,7 +258,7 @@ private fun AboutContent(
                                 )
                             } else Modifier
                         ),
-                    painter = painterResource(R.drawable.app_logo),
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
                     colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onBackground),
                     contentDescription = "icon",
                 )
@@ -284,7 +284,7 @@ private fun AboutContent(
                             )
                         } else Modifier
                     ),
-                text = "通知净化",
+                text = "NotifyFilter",
                 color = MiuixTheme.colorScheme.onBackground,
                 fontWeight = FontWeight.Bold,
                 fontSize = 35.sp,
@@ -336,7 +336,7 @@ private fun AboutContent(
                     Column(
                         modifier = Modifier.padding(bottom = 12.dp),
                     ) {
-                        SmallTitle(text = "开源")
+                        SmallTitle(text = "开放源代码许可")
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()

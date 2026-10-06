@@ -19,16 +19,21 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
+import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
 import io.github.vstory.hook.notifyfilter.ui.history.HistoryScreen
 import io.github.vstory.hook.notifyfilter.ui.nav.LocalNavigator
 import io.github.vstory.hook.notifyfilter.ui.nav.MainPagerState
@@ -50,9 +55,14 @@ import io.github.vstory.hook.notifyfilter.ui.settings.StatsDetailScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.NavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationBarItem
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.highlight.Highlight
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ListView
 import top.yukonga.miuix.kmp.icon.extended.Recent
@@ -62,6 +72,7 @@ import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.rememberNavBackStack
 import top.yukonga.miuix.kmp.nav.core.rememberNavSystemCornerRadius
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -332,11 +343,43 @@ fun MainScaffold() {
  */
 @Composable
 private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
+    val bottomBarBackdrop = rememberBlurBackdrop()
+    val floatingBarColor = if (bottomBarBackdrop != null) {
+        Color.Transparent
+    } else {
+        MiuixTheme.colorScheme.surfaceContainer
+    }
+    val floatingPillRadius = 50.dp
+    val floatingBarShape = RoundedCornerShape(floatingPillRadius)
+    val isDark = isSystemInDarkTheme()
+    val floatingHighlight = remember(isDark) {
+        if (isDark) Highlight.GlassStrokeMiddleDark else Highlight.GlassStrokeMiddleLight
+    }
+    val floatingBarModifier = if (bottomBarBackdrop != null) {
+        Modifier.textureBlur(
+            backdrop = bottomBarBackdrop,
+            shape = floatingBarShape,
+            blurRadius = 25f,
+            colors = BlurDefaults.blurColors(
+                blendColors = listOf(
+                    BlendColorEntry(color = MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f)),
+                ),
+            ),
+            highlight = floatingHighlight,
+        )
+    } else {
+        Modifier
+    }
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            FloatingNavigationBar(
+                modifier = floatingBarModifier,
+                color = floatingBarColor,
+                cornerRadius = floatingPillRadius,
+            ) {
                 tabs.forEachIndexed { index, tab ->
-                    NavigationBarItem(
+                    FloatingNavigationBarItem(
                         selected = mainPagerState.selectedPage == index,
                         onClick = { mainPagerState.animateToPage(index) },
                         icon = tab.icon,
@@ -348,7 +391,11 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     ) { padding ->
         val bottomPadding = padding.calculateBottomPadding()
         HorizontalPager(
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (bottomBarBackdrop != null) {
+                Modifier.fillMaxSize().layerBackdrop(bottomBarBackdrop)
+            } else {
+                Modifier.fillMaxSize()
+            },
             state = mainPagerState.pagerState,
             verticalAlignment = Alignment.Top,
             overscrollEffect = null,

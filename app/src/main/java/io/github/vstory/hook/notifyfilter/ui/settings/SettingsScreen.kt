@@ -559,7 +559,7 @@ fun SettingsScreen(
                     CardItem("about") {
                         ArrowPreference(
                             title = "关于",
-                            summary = "通知净化 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}",
+                            summary = "NotifyFilter v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME} (${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_CODE})",
                             onClick = { onOpenAbout() },
                         )
                     },
