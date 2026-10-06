@@ -136,6 +136,14 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE `key` = :key AND seq = 0 ORDER BY id DESC LIMIT 1")
     suspend fun findByKey(key: String): NotificationEntity?
 
+    /**
+     * 详情面板的版本记录：同 key 的全部版本，最新在前（seq 小者更新）。
+     * limit 由调用方传 [MAX_VERSIONS_PER_KEY]：表里本就只有这些版本，purgeOlderThan 还会再清，
+     * 故版本数不等于真实推送次数——展示侧禁止写成「更新了 N 次」。
+     */
+    @Query("SELECT * FROM notifications WHERE `key` = :key ORDER BY seq ASC LIMIT :limit")
+    suspend fun listVersionsByKey(key: String, limit: Int): List<NotificationEntity>
+
     /** 60 秒内同 App + 同 contentHash（P2-2：64 位哈希替代整段文本等值）→ 重复推送，不重复入库 */
     @Query(
         "SELECT * FROM notifications WHERE packageName = :pkg AND contentHash = :contentHash " +

@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_AI
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_RULE
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_MANUAL_MARKED_AD
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_PASSED
+import io.github.vstory.hook.notifyfilter.data.db.MAX_VERSIONS_PER_KEY
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
 import io.github.vstory.hook.notifyfilter.ui.component.CardItem
@@ -112,8 +114,22 @@ class StatsDetailViewModel(
     private val _selected = MutableStateFlow<NotificationEntity?>(null)
     val selected: StateFlow<NotificationEntity?> = _selected
 
+    /** 详情面板的版本记录，与历史页同源（见 [io.github.vstory.hook.notifyfilter.ui.history.HistoryViewModel].versions） */
+    private val _versions = MutableStateFlow<List<NotificationEntity>>(emptyList())
+    val versions: StateFlow<List<NotificationEntity>> = _versions
+
     fun select(n: NotificationEntity?) {
         _selected.value = n
+        if (n == null || n.key.isEmpty()) {
+            _versions.value = emptyList()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val rows = runCatching { dao.listVersionsByKey(n.key, MAX_VERSIONS_PER_KEY) }
+                .getOrDefault(emptyList())
+            // 快速改选时早发出的查询可能后返回，只认仍在选中的那条
+            if (_selected.value?.key == n.key) _versions.value = rows
+        }
     }
 
     /** 单条学习：广告(1) / 正常(0)；同方向重复点击累积权重，随后全量重拟合 */
@@ -297,9 +313,15 @@ fun StatsDetailScreen(
     // Dev 14：点击条目 → 与历史页一致的详情弹层（重新学习 / 取消学习 / 跳转通道）
     selected?.let { n ->
         val context = LocalContext.current
-        OverlayBottomSheet(show = true, onDismissRequest = { vm.select(null) }) {
+        val versions by vm.versions.collectAsState()
+        OverlayBottomSheet(
+            show = true,
+            title = stringResource(R.string.detail_title),
+            onDismissRequest = { vm.select(null) },
+        ) {
             NotificationDetail(
                 n = n,
+                versions = versions,
                 onJumpChannel = {
                     io.github.vstory.hook.notifyfilter.notify.KeepAliveManager.openChannelSettings(
                         context, n.packageName, n.channelId,

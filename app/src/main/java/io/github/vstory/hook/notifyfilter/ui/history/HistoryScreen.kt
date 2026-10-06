@@ -26,8 +26,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,6 +78,7 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import top.yukonga.miuix.kmp.basic.Badge
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -375,9 +379,15 @@ fun HistoryScreen(
         }
 
         selected?.let { n ->
-            OverlayBottomSheet(show = true, onDismissRequest = { vm.select(null) }) {
+            val versions by vm.versions.collectAsState()
+            OverlayBottomSheet(
+                show = true,
+                title = stringResource(R.string.detail_title),
+                onDismissRequest = { vm.select(null) },
+            ) {
                 NotificationDetail(
                     n = n,
+                    versions = versions,
                     onJumpChannel = {
                         KeepAliveManager.openChannelSettings(context, n.packageName, n.channelId)
                     },
@@ -546,11 +556,7 @@ private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
                     Text(
                         "广告率 $pct%",
                         style = MiuixTheme.textStyles.footnote2,
-                        color = when {
-                            n.adProbability >= 0.8f -> MiuixTheme.colorScheme.error
-                            n.adProbability >= 0.5f -> MiuixTheme.colorScheme.onTertiaryContainer
-                            else -> MiuixTheme.colorScheme.onSurfaceVariantActions
-                        },
+                        color = adScoreColor(n.adProbability),
                     )
                 }
             }
@@ -563,25 +569,31 @@ private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
  * 拦截类由写入侧直接把 dismissTime 落成 postTime（通知从未进通知栏，等不到 removed 回调），
  * reason 因此停在默认 0——与系统「原因未知」的 0 同值，只能借决策集合区分这两种来源。
  */
+@Composable
 private fun stateLabel(n: NotificationEntity): String? = when {
-    n.seq > 0 -> "旧版本"
+    n.seq > 0 -> stringResource(R.string.history_state_old_version)
     n.dismissTime < 0 -> null
-    n.dismissReason == 0 -> if (n.decision in FILTERED_DECISIONS) "已被拦截" else "已移除"
+    n.dismissReason == 0 -> if (n.decision in FILTERED_DECISIONS) {
+        stringResource(R.string.history_state_blocked)
+    } else {
+        stringResource(R.string.history_state_removed)
+    }
     else -> dismissReasonText(n.dismissReason)
 }
 
 /** NLS 的 reason 常量 → 展示文案 */
+@Composable
 private fun dismissReasonText(reason: Int): String = when (reason) {
-    REASON_CANCEL -> "已清除"
-    REASON_CLICK -> "点击后移除"
-    REASON_APP_CANCEL, REASON_APP_CANCEL_ALL -> "应用撤回"
+    REASON_CANCEL -> stringResource(R.string.reason_cleared)
+    REASON_CLICK -> stringResource(R.string.reason_clicked)
+    REASON_APP_CANCEL, REASON_APP_CANCEL_ALL -> stringResource(R.string.reason_app_cancelled)
     // 本模块自己撤下的（如标注广告后清理通知栏）
-    REASON_LISTENER_CANCEL, REASON_LISTENER_CANCEL_ALL -> "本应用移除"
-    REASON_PACKAGE_BANNED -> "应用被停用"
-    REASON_CHANNEL_BANNED -> "通道被关闭"
-    REASON_SNOOZED -> "已延后"
-    REASON_TIMEOUT -> "超时"
-    else -> "系统移除"
+    REASON_LISTENER_CANCEL, REASON_LISTENER_CANCEL_ALL -> stringResource(R.string.reason_self_cancelled)
+    REASON_PACKAGE_BANNED -> stringResource(R.string.reason_app_disabled)
+    REASON_CHANNEL_BANNED -> stringResource(R.string.reason_channel_disabled)
+    REASON_SNOOZED -> stringResource(R.string.reason_snoozed)
+    REASON_TIMEOUT -> stringResource(R.string.reason_timeout)
+    else -> stringResource(R.string.reason_system_removed)
 }
 
 /** 生效中的筛选条件数：驱动入口行摘要与「清除筛选条件」行的显隐 */
@@ -724,69 +736,255 @@ private fun DateField(label: String, value: LocalDate?, onUpdate: (LocalDate?) -
 /**
  * 通知详情弹层内容（internal：Dev 14 起统计明细页点击条目也复用它，
  * 学习/取消学习交互与历史页完全一致）。
+ *
+ * 分区照 miuix 范式（`SmallTitle` + 一张 `Card`）：判定是结论、详情是事实，各占一张卡。
+ * 横向留白交给弹层自身的 `insideMargin`（24dp），卡片与行都不要再叠横向 padding。
  */
 @Composable
 internal fun NotificationDetail(
     n: NotificationEntity,
+    versions: List<NotificationEntity>,
     onJumpChannel: () -> Unit,
     onLearn: (Int) -> Unit,
     onUnlearn: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        if (n.title.isNotEmpty()) {
-            Text(n.title, style = MiuixTheme.textStyles.title3, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(n.content.ifEmpty { "（无正文）" }, style = MiuixTheme.textStyles.body2)
-        Spacer(Modifier.height(12.dp))
-        Text("发送时间：${formatTime(n.postTime)}", style = MiuixTheme.textStyles.footnote1)
-        Text(
-            // 1.2.3：label 解析失败时 appName 即包名，避免重复显示两次
-            if (n.appName == n.packageName) "APP：${n.packageName}"
-            else "APP：${n.appName} (${n.packageName})",
-            style = MiuixTheme.textStyles.footnote1,
-        )
-        Text("发送通道：${n.channelId.ifEmpty { "（默认/未知）" }}", style = MiuixTheme.textStyles.footnote1)
-        Text("AI 判定：广告概率 ${(n.adProbability * 100).toInt()}%", style = MiuixTheme.textStyles.footnote1)
+    val channelName by channelNameState(n.packageName, n.channelId)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            // 弹层高度上限是「窗口高 − 状态栏」（BottomSheetContentLayout 的 heightIn），
+            // 内容超过它必须自己滚，否则尾部被裁且滑不到
+            .verticalScroll(rememberScrollState()),
+    ) {
+        Card(Modifier.fillMaxWidth()) { DetailBodyRow(n) }
 
-        Spacer(Modifier.height(16.dp))
-        // 1.1.11：已学习的通知也允许再次点击学习（同方向重复点击累积权重）；随时可取消学习
-        // 学习方向是一次标注选择、两者无主次 → 同用 primary；默认灰底在浅色下与卡片几乎同色
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val adText = when {
-                n.learned && n.learnLabel == 1 -> "再学一次广告(${n.learnCount + 1})"
-                else -> "广告通知"
-            }
-            val normalText = when {
-                n.learned && n.learnLabel == 0 -> "再学一次正常(${n.learnCount + 1})"
-                else -> "正常通知"
-            }
-            Button(
-                onClick = { onLearn(1) },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColorsPrimary(),
-            ) { Text(adText, style = MiuixTheme.textStyles.button) }
-            Button(
-                onClick = { onLearn(0) },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColorsPrimary(),
-            ) { Text(normalText, style = MiuixTheme.textStyles.button) }
+        SmallTitle(stringResource(R.string.detail_section_decision))
+        Card(Modifier.fillMaxWidth()) {
+            BasicComponent(
+                title = stringResource(R.string.detail_decision_result),
+                summary = decisionReason(n),
+            )
+            BasicComponent(
+                title = stringResource(R.string.detail_ad_score),
+                endActions = {
+                    Text(
+                        "${(n.adProbability * 100).toInt()}%",
+                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        color = adScoreColor(n.adProbability),
+                    )
+                },
+            )
+            LearnButtons(n, onLearn)
         }
-        Spacer(Modifier.height(8.dp))
-        TextButton(
-            text = "跳转到该通道设置",
-            onClick = onJumpChannel,
-            modifier = Modifier.fillMaxWidth(),
-        )
+
+        SmallTitle(stringResource(R.string.detail_section_info))
+        Card(Modifier.fillMaxWidth()) {
+            BasicComponent(
+                title = stringResource(R.string.detail_label_source),
+                summary = sourceText(n),
+            )
+            BasicComponent(
+                title = stringResource(R.string.detail_label_channel),
+                summary = channelName
+                    ?: n.channelId.ifEmpty { stringResource(R.string.detail_channel_unknown) },
+                endActions = {
+                    Text(
+                        stringResource(R.string.detail_channel_jump),
+                        fontSize = MiuixTheme.textStyles.body2.fontSize,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                    )
+                },
+                onClick = onJumpChannel,
+            )
+            BasicComponent(
+                title = stringResource(R.string.detail_label_post_time),
+                summary = formatTime(n.postTime),
+            )
+            BasicComponent(
+                title = stringResource(R.string.detail_label_state),
+                summary = detailStateText(n),
+            )
+        }
+
+        // 只列被覆盖掉的旧版本：当前版本就是上面那张本体卡
+        val history = versions.filter { it.seq > 0 }
+        if (history.isNotEmpty()) {
+            SmallTitle(stringResource(R.string.detail_section_versions))
+            Card(Modifier.fillMaxWidth()) {
+                BasicComponent(title = stringResource(R.string.detail_versions_count, versions.size))
+                BasicComponent(
+                    title = stringResource(R.string.detail_versions_first),
+                    summary = formatTime(versions.last().postTime),
+                )
+                history.forEach { VersionRow(it) }
+            }
+        }
+
         if (n.learned) {
-            Spacer(Modifier.height(8.dp))
             TextButton(
-                text = "取消学习",
+                text = stringResource(R.string.detail_unlearn),
                 onClick = onUnlearn,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+/** 通知本体：图标 + 标题 + 正文。`BasicComponent` 的 summary 限不了 maxLines，正文会整段铺开，故自建。 */
+@Composable
+private fun DetailBodyRow(n: NotificationEntity) {
+    Row(
+        Modifier.fillMaxWidth().padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        AppIcon(n.packageName, 40, fallbackText = n.appName)
+        Column(Modifier.weight(1f)) {
+            if (n.title.isNotEmpty()) {
+                Text(
+                    n.title,
+                    style = MiuixTheme.textStyles.body1,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                n.content.ifEmpty { stringResource(R.string.detail_no_body) },
+                style = MiuixTheme.textStyles.footnote1,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** 历史版本行（自建：时间戳 + 标题 + 正文摘要；图标都一样，不带） */
+@Composable
+private fun VersionRow(v: NotificationEntity) {
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        Text(
+            formatTime(v.postTime),
+            style = MiuixTheme.textStyles.footnote2,
+            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+        )
+        if (v.title.isNotEmpty()) {
+            Text(
+                v.title,
+                style = MiuixTheme.textStyles.body1,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (v.content.isNotEmpty()) {
+            Text(
+                v.content,
+                style = MiuixTheme.textStyles.footnote1,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * 学习方向按钮。1.1.11：已学习的通知也允许再次点击学习（同方向重复点击累积权重）；
+ * 方向是一次标注选择、两者无主次 → 同用 primary（默认灰底在浅色下与卡片几乎同色）。
+ */
+@Composable
+private fun LearnButtons(n: NotificationEntity, onLearn: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        val adText = if (n.learned && n.learnLabel == 1) {
+            stringResource(R.string.detail_learn_ad_again, n.learnCount + 1)
+        } else {
+            stringResource(R.string.detail_learn_ad)
+        }
+        val normalText = if (n.learned && n.learnLabel == 0) {
+            stringResource(R.string.detail_learn_normal_again, n.learnCount + 1)
+        } else {
+            stringResource(R.string.detail_learn_normal)
+        }
+        Button(
+            onClick = { onLearn(1) },
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.buttonColorsPrimary(),
+        ) { Text(adText, style = MiuixTheme.textStyles.button) }
+        Button(
+            onClick = { onLearn(0) },
+            modifier = Modifier.weight(1f),
+            colors = ButtonDefaults.buttonColorsPrimary(),
+        ) { Text(normalText, style = MiuixTheme.textStyles.button) }
+    }
+}
+
+/** 1.2.3：label 解析失败时 appName 即包名，避免重复显示两次 */
+private fun sourceText(n: NotificationEntity): String =
+    if (n.appName == n.packageName) n.packageName else "${n.appName} (${n.packageName})"
+
+/** 广告率着色档位（与列表行同源：0.8 起 error、0.5 起 onTertiaryContainer、其余 actions） */
+@Composable
+private fun adScoreColor(p: Float): Color = when {
+    p >= 0.8f -> MiuixTheme.colorScheme.error
+    p >= 0.5f -> MiuixTheme.colorScheme.onTertiaryContainer
+    else -> MiuixTheme.colorScheme.onSurfaceVariantActions
+}
+
+/**
+ * 「为什么是这个判定」。判定链路的分支见 [CleanerListenerService.decide] 与 `FilterEngine.decide`：
+ * `*_MODULE` 是 hook 在入队前阻断（通知从未进通知栏），非 `_MODULE` 是 NLS 事后撤下（已进过）。
+ */
+@Composable
+private fun decisionReason(n: NotificationEntity): String = when (n.decision) {
+    DECISION_FILTERED_BY_AI -> stringResource(R.string.detail_reason_ai_nls)
+    DECISION_FILTERED_BY_AI_MODULE -> stringResource(R.string.detail_reason_ai_module)
+    DECISION_FILTERED_BY_RULE -> stringResource(R.string.detail_reason_rule_nls)
+    DECISION_FILTERED_BY_RULE_MODULE -> stringResource(R.string.detail_reason_rule_module)
+    DECISION_MANUAL_MARKED_AD -> stringResource(R.string.detail_reason_manual)
+    DECISION_WHITELIST -> stringResource(R.string.detail_reason_whitelist)
+    DECISION_MEDIA -> stringResource(R.string.detail_reason_media)
+    DECISION_CONVERSATION -> stringResource(R.string.detail_reason_conversation)
+    DECISION_ONGOING -> stringResource(R.string.detail_reason_ongoing)
+    // PASSED：有概率值说明只是没到阈值；没打分的分不出「硬放行」与「模型不可用」，合并成一句
+    else -> if (n.adProbability > 0f) {
+        stringResource(R.string.detail_reason_below_threshold)
+    } else {
+        stringResource(R.string.detail_reason_not_scored)
+    }
+}
+
+/** 详情版当前状态：判定依据与 [stateLabel] 同一套，只是把「已拦截 / 已移除」写清上下文 */
+@Composable
+private fun detailStateText(n: NotificationEntity): String = when {
+    n.seq > 0 -> stringResource(R.string.detail_state_history)
+    n.dismissTime < 0 -> stringResource(R.string.detail_state_visible)
+    n.dismissReason == 0 ->
+        if (n.decision in FILTERED_DECISIONS) {
+            stringResource(R.string.detail_state_filtered)
+        } else {
+            stringResource(R.string.detail_state_removed)
+        }
+    else -> stringResource(R.string.detail_state_removed_reason, dismissReasonText(n.dismissReason))
+}
+
+/**
+ * 渠道名只能现查：写入侧把 `channelName` 填成了 `channelId`（该列已无独立语义），
+ * 真实渠道名在系统的 `NotificationChannel` 里。查系统走 IO，照 [AppIcon] 的同一模式。
+ */
+@Composable
+private fun channelNameState(packageName: String, channelId: String): State<String?> {
+    val context = LocalContext.current
+    return produceState<String?>(null, packageName, channelId) {
+        if (channelId.isEmpty()) return@produceState
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                context.getSystemService(android.app.NotificationManager::class.java)
+                    ?.getNotificationChannel(packageName, channelId)?.name?.toString()
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+        }
     }
 }
 

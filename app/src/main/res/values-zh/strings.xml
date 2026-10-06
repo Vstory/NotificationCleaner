@@ -50,6 +50,57 @@
     <string name="history_empty_history">暂无历史版本</string>
     <string name="history_need_access">请先在系统设置中授予通知监听权限</string>
 
+    <string name="history_state_old_version">旧版本</string>
+    <string name="history_state_blocked">已被拦截</string>
+    <string name="history_state_removed">已移除</string>
+
+    <string name="reason_cleared">已清除</string>
+    <string name="reason_clicked">点击后移除</string>
+    <string name="reason_app_cancelled">应用撤回</string>
+    <string name="reason_self_cancelled">本应用移除</string>
+    <string name="reason_app_disabled">应用被停用</string>
+    <string name="reason_channel_disabled">通道被关闭</string>
+    <string name="reason_snoozed">已延后</string>
+    <string name="reason_timeout">超时</string>
+    <string name="reason_system_removed">系统移除</string>
+
+    <string name="detail_title">通知详情</string>
+    <string name="detail_no_body">（无正文）</string>
+    <string name="detail_section_decision">判定</string>
+    <string name="detail_section_info">详情</string>
+    <string name="detail_section_versions">版本记录</string>
+    <string name="detail_decision_result">判定结果</string>
+    <string name="detail_ad_score">广告概率</string>
+    <string name="detail_label_source">来源应用</string>
+    <string name="detail_label_channel">通知渠道</string>
+    <string name="detail_label_post_time">发送时间</string>
+    <string name="detail_label_state">当前状态</string>
+    <string name="detail_state_visible">正在通知栏显示</string>
+    <string name="detail_state_filtered">已被拦截 — 通知从未显示</string>
+    <string name="detail_state_removed">已移除</string>
+    <string name="detail_state_removed_reason">已移除（%1$s）</string>
+    <string name="detail_state_history">历史版本 — 已被同 key 的新通知覆盖</string>
+    <string name="detail_reason_ai_nls">由 AI 判定拦截 — 通知发出后被本应用撤下</string>
+    <string name="detail_reason_ai_module">由 AI 判定拦截 — 在系统入队前阻断，从未进入通知栏</string>
+    <string name="detail_reason_rule_nls">命中自定义规则 — 通知发出后被本应用撤下</string>
+    <string name="detail_reason_rule_module">命中自定义规则 — 在系统入队前阻断</string>
+    <string name="detail_reason_manual">已由你标记为广告通知</string>
+    <string name="detail_reason_whitelist">白名单应用 — 跳过 AI 判定，自定义规则仍然生效</string>
+    <string name="detail_reason_media">媒体通知（播放控件）— 不参与过滤</string>
+    <string name="detail_reason_conversation">对话通知 — 不参与过滤</string>
+    <string name="detail_reason_ongoing">常驻通知（进度条 / 来电）— 不参与过滤</string>
+    <string name="detail_reason_below_threshold">未达过滤阈值</string>
+    <string name="detail_reason_not_scored">未参与 AI 判定 — 内容过短或命中放行词</string>
+    <string name="detail_versions_count">共记录 %1$d 个版本</string>
+    <string name="detail_versions_first">首次更新</string>
+    <string name="detail_channel_jump">跳转到该通道设置</string>
+    <string name="detail_channel_unknown">（未知）</string>
+    <string name="detail_learn_ad">广告通知</string>
+    <string name="detail_learn_normal">正常通知</string>
+    <string name="detail_learn_ad_again">再学一次广告（%1$d）</string>
+    <string name="detail_learn_normal_again">再学一次正常（%1$d）</string>
+    <string name="detail_unlearn">取消学习</string>
+
     <string name="common_back">返回</string>
     <string name="common_cancel">取消</string>
     <string name="common_confirm">确定</string>

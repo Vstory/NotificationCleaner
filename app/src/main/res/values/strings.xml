@@ -50,6 +50,57 @@
     <string name="history_empty_history">No previous versions</string>
     <string name="history_need_access">Grant notification access in system settings first</string>
 
+    <string name="history_state_old_version">Older version</string>
+    <string name="history_state_blocked">Blocked</string>
+    <string name="history_state_removed">Removed</string>
+
+    <string name="reason_cleared">Cleared</string>
+    <string name="reason_clicked">Removed after tapping</string>
+    <string name="reason_app_cancelled">Withdrawn by the app</string>
+    <string name="reason_self_cancelled">Removed by NotifyFilter</string>
+    <string name="reason_app_disabled">App disabled</string>
+    <string name="reason_channel_disabled">Channel turned off</string>
+    <string name="reason_snoozed">Snoozed</string>
+    <string name="reason_timeout">Timed out</string>
+    <string name="reason_system_removed">Removed by system</string>
+
+    <string name="detail_title">Notification details</string>
+    <string name="detail_no_body">(no text)</string>
+    <string name="detail_section_decision">Decision</string>
+    <string name="detail_section_info">Details</string>
+    <string name="detail_section_versions">Versions</string>
+    <string name="detail_decision_result">Result</string>
+    <string name="detail_ad_score">Ad score</string>
+    <string name="detail_label_source">Source app</string>
+    <string name="detail_label_channel">Channel</string>
+    <string name="detail_label_post_time">Posted</string>
+    <string name="detail_label_state">State</string>
+    <string name="detail_state_visible">Currently showing</string>
+    <string name="detail_state_filtered">Blocked — never shown</string>
+    <string name="detail_state_removed">Removed</string>
+    <string name="detail_state_removed_reason">Removed (%1$s)</string>
+    <string name="detail_state_history">Older version — replaced by a newer one</string>
+    <string name="detail_reason_ai_nls">Blocked by AI — withdrawn after it was posted</string>
+    <string name="detail_reason_ai_module">Blocked by AI before enqueue — never reached the shade</string>
+    <string name="detail_reason_rule_nls">Matched a rule — withdrawn after it was posted</string>
+    <string name="detail_reason_rule_module">Matched a rule before enqueue</string>
+    <string name="detail_reason_manual">Marked as an ad by you</string>
+    <string name="detail_reason_whitelist">Whitelisted app — AI skipped, rules still applied</string>
+    <string name="detail_reason_media">Media notification — never filtered</string>
+    <string name="detail_reason_conversation">Conversation notification — never filtered</string>
+    <string name="detail_reason_ongoing">Ongoing notification — never filtered</string>
+    <string name="detail_reason_below_threshold">Below the filter threshold</string>
+    <string name="detail_reason_not_scored">AI not run — content too short or allow-listed</string>
+    <string name="detail_versions_count">%1$d versions recorded</string>
+    <string name="detail_versions_first">First posted</string>
+    <string name="detail_channel_jump">Open channel settings</string>
+    <string name="detail_channel_unknown">(unknown)</string>
+    <string name="detail_learn_ad">Ad notification</string>
+    <string name="detail_learn_normal">Normal notification</string>
+    <string name="detail_learn_ad_again">Learn as ad again (%1$d)</string>
+    <string name="detail_learn_normal_again">Learn as normal again (%1$d)</string>
+    <string name="detail_unlearn">Remove label</string>
+
     <string name="common_back">Back</string>
     <string name="common_cancel">Cancel</string>
     <string name="common_confirm">Confirm</string>

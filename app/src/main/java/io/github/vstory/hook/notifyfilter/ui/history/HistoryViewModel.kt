@@ -7,6 +7,7 @@ import io.github.vstory.hook.notifyfilter.data.ModelRepository
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_MANUAL_MARKED_AD
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_PASSED
 import io.github.vstory.hook.notifyfilter.data.db.FILTERED_DECISIONS
+import io.github.vstory.hook.notifyfilter.data.db.MAX_VERSIONS_PER_KEY
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
 import kotlinx.coroutines.Dispatchers
@@ -153,11 +154,32 @@ class HistoryViewModel(
     private val _selected = MutableStateFlow<NotificationEntity?>(null)
     val selected: StateFlow<NotificationEntity?> = _selected
 
+    /**
+     * 详情面板的版本记录（同 key 全部版本，最新在前）。按需查询而非并进列表流：
+     * 只有打开着的那一条需要它，列表每行都带一份版本列表纯属浪费。
+     */
+    private val _versions = MutableStateFlow<List<NotificationEntity>>(emptyList())
+    val versions: StateFlow<List<NotificationEntity>> = _versions
+
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast
 
     fun select(n: NotificationEntity?) {
         _selected.value = n
+        loadVersions(n)
+    }
+
+    private fun loadVersions(n: NotificationEntity?) {
+        if (n == null || n.key.isEmpty()) {
+            _versions.value = emptyList()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val rows = runCatching { dao.listVersionsByKey(n.key, MAX_VERSIONS_PER_KEY) }
+                .getOrDefault(emptyList())
+            // 快速改选时早发出的查询可能后返回，只认仍在选中的那条
+            if (_selected.value?.key == n.key) _versions.value = rows
+        }
     }
 
     fun setTab(t: HistoryTab) {
@@ -249,6 +271,8 @@ class HistoryViewModel(
             _toast.value = "拟合完成（${labels.size} 条标注）"
         }
         _selected.value = _selected.value?.let { sel -> updated.firstOrNull { it.id == sel.id } ?: sel }
+        // 学习/取消学习会改写 decision 与 learned，版本记录与判定文案得跟着刷新
+        loadVersions(_selected.value)
         return updated
     }
 }
