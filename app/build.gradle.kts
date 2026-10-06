@@ -16,6 +16,11 @@ val localProps = Properties().apply {
 val signStoreFile = localProps.getProperty("storeFile")
 val hasSigning = !signStoreFile.isNullOrBlank()
 
+// CI 渠道（build-ci.yml）传 `-PciVersionSuffix=ci-<变体>.<短号>`：同一 versionCode 的多次构建在系统
+// 应用信息页此前完全同形，装到手机上认不出是哪个提交（2026-10-06 实际踩到）。`+` 之后属 semver 的
+// 构建元数据段、不参与版本比较，故不影响更新检查；正式发版（build-release.yml）不传该属性。
+val ciVersionSuffix = providers.gradleProperty("ciVersionSuffix").orNull?.trim()?.takeIf { it.isNotEmpty() }
+
 @Suppress("UnstableApiUsage")
 android {
     namespace = "io.github.vstory.hook.notifyfilter"
@@ -37,6 +42,9 @@ android {
         targetSdk = 36
         versionCode = 73
         versionName = "2.1.3"
+        // 刻意「后赋值覆盖」而非改写上面那行字面量：CI 与发版工作流都用 sed 取本文件**第一处**
+        // versionName，字面量必须保持可被解析
+        ciVersionSuffix?.let { versionName = "${android.defaultConfig.versionName}+$it" }
         // 1.3.2（P3-7③）：只保留 arm64-v8a——剔除其余架构（armeabi-v7a/x86/x86_64）
         // 的原生库，精简 APK 体积；目标设备为真机 ARM64（模块端同样仅注入 arm64 设备）
         ndk {

@@ -151,7 +151,7 @@ jobs:
             echo "variants=${VLIST}"
             echo "variant_tag=$(printf '%s' "$VLIST" | tr ' ' '-')"
           } >> "$GITHUB_OUTPUT"
-          for kv in "PREFIX=$PREFIX" "VER=$VER" "CODE=$CODE" "VARIANT_LIST=$VLIST"; do echo "${kv}" >> "$GITHUB_ENV"; done
+          for kv in "PREFIX=$PREFIX" "VER=$VER" "CODE=$CODE" "VARIANT_LIST=$VLIST" "SHORT=$SHORT"; do echo "${kv}" >> "$GITHUB_ENV"; done
 
           for v in $VLIST; do
             N="${PREFIX}_${VER}.${CODE}_${TS}_ci-${v}_${SHORT}.apk"
@@ -204,10 +204,13 @@ jobs:
       - name: Gradle build
         run: |
           chmod +x gradlew
+          # 每个变体单独调用 gradle ⇒ 可分别注入 `+ci-<变体>.<短号>`（versionName 是 defaultConfig
+          # 级的，无法按变体区分，见 app/build.gradle.kts）。只影响应用内显示的版本名，
+          # 产物名与 versionCode 不变。
           for v in $VARIANT_LIST; do
             case "$v" in
-              debug)   ./gradlew --no-daemon :app:assembleDebug ;;
-              release) ./gradlew --no-daemon :app:assembleRelease ;;
+              debug)   ./gradlew --no-daemon :app:assembleDebug   -PciVersionSuffix="ci-debug.${SHORT}" ;;
+              release) ./gradlew --no-daemon :app:assembleRelease -PciVersionSuffix="ci-release.${SHORT}" ;;
             esac
           done
           ls -la app/build/outputs/apk/*/ || true
@@ -308,14 +311,17 @@ jobs:
             # ⚠️ 本步骤每个 `VAR="$(... | grep ...)"` 都带 `|| true`：grep 无匹配时返回 1，在 Actions 的
             #    `bash -e` 下会让赋值语句整体失败 ⇒ 脚本**静默**退出（日志里只剩 "Process completed
             #    with exit code 1."，看不出是哪条断言挂了）。故一律「先抓、再显式判空报错」。
-            # ④ 版本号必须与源码一致（两个变体都不带 versionNameSuffix，期望值就是去空格后的版本名）
+            # ④ 版本号必须与源码一致：CI 渠道额外带 `+ci-<变体>.<短号>` 构建元数据段
+            #    （由 -PciVersionSuffix 注入，见 app/build.gradle.kts）
+            EXPECT_VN="${VER}+ci-${VAR}.${SHORT}"
             PKG_LINE="$(printf '%s' "$BADGING" | grep -m1 "^package:" || true)"
             [ -n "$PKG_LINE" ] || { echo "::error::$NAME 读不到 badging 的 package 行"; exit 1; }
             printf '%s' "$PKG_LINE" | grep -q "versionCode='${CODE}'" \
               || { echo "::error::$NAME 的 versionCode 与源码不符（期望 ${CODE}）：$PKG_LINE"; exit 1; }
-            printf '%s' "$PKG_LINE" | grep -q "versionName='${VER}'" \
-              || { echo "::error::$NAME 的 versionName 与源码不符（期望 ${VER}）：$PKG_LINE"; exit 1; }
-            echo "  ✅ 版本号与源码一致：${VER}(${CODE})"
+            # 用 -F：期望串含 `+` 与 `.`，走正则会被当元字符
+            printf '%s' "$PKG_LINE" | grep -Fq "versionName='${EXPECT_VN}'" \
+              || { echo "::error::$NAME 的 versionName 与源码不符（期望 ${EXPECT_VN}）：$PKG_LINE"; exit 1; }
+            echo "  ✅ 版本号与源码一致：${EXPECT_VN}(${CODE})"
 
             # ⑤ debuggable 标志必须与文件名里的变体一致 —— 两个方向都要查：
             #    release 带它 = 日志没裁（非最终形态）；debug 没它 = 排障日志全丢。都是实际错。
