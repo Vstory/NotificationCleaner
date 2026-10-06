@@ -64,6 +64,8 @@ import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NumberPicker
@@ -77,6 +79,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Filter
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -107,10 +111,13 @@ fun HistoryScreen(
     val search by vm.search.collectAsState()
     val selected by vm.selected.collectAsState()
     val toast by vm.toast.collectAsState()
+    val adv by vm.advancedFilter.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var hadData by remember { mutableStateOf(false) }
+    var filterOpen by remember { mutableStateOf(false) }
+    val advCount = advancedActiveCount(adv)
 
     // 修复：打开页面/切换筛选/首次加载后定位到最新通知（列表顶部）
     LaunchedEffect(list.isEmpty(), filter) {
@@ -151,6 +158,19 @@ fun HistoryScreen(
                     title = "历史",
                     color = barColor,
                     scrollBehavior = scrollBehavior,
+                    actions = {
+                        IconButton(onClick = { filterOpen = true }) {
+                            Icon(
+                                imageVector = MiuixIcons.Filter,
+                                contentDescription = "筛选",
+                                tint = if (advCount > 0) {
+                                    MiuixTheme.colorScheme.primary
+                                } else {
+                                    MiuixTheme.colorScheme.onSurface
+                                },
+                            )
+                        }
+                    },
                 )
             }
         },
@@ -171,10 +191,7 @@ fun HistoryScreen(
                     onTabSelected = { vm.setFilter(HistoryFilter.entries[it]) },
                 )
             }
-            var advOpen by remember { mutableStateOf(false) }
             var searchExpanded by remember { mutableStateOf(false) }
-            val adv by vm.advancedFilter.collectAsState()
-            val advCount = advancedActiveCount(adv)
             SearchBar(
                 inputField = {
                     InputField(
@@ -194,21 +211,6 @@ fun HistoryScreen(
                 content = {},
                 modifier = Modifier.fillMaxWidth(),
             )
-            Card(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .padding(top = 6.dp),
-            ) {
-                ArrowPreference(
-                    title = "筛选",
-                    summary = if (advCount == 0) "全部通知" else "已设置 $advCount 个条件",
-                    onClick = { advOpen = !advOpen },
-                )
-                if (advOpen) {
-                    AdvancedFilterRows(vm, onOpenAppPicker)
-                }
-            }
             Spacer(Modifier.height(4.dp))
             if (list.isEmpty()) {
                 Column(
@@ -240,6 +242,25 @@ fun HistoryScreen(
                             },
                         )
                     }
+                }
+            }
+        }
+
+        if (filterOpen) {
+            OverlayBottomSheet(
+                show = true,
+                title = "筛选",
+                onDismissRequest = { filterOpen = false },
+            ) {
+                Card(Modifier.fillMaxWidth()) {
+                    AdvancedFilterRows(
+                        vm = vm,
+                        onOpenAppPicker = {
+                            // 弹层渲染在 root scaffold，不收起会盖住压栈打开的 AppPicker
+                            filterOpen = false
+                            onOpenAppPicker()
+                        },
+                    )
                 }
             }
         }
