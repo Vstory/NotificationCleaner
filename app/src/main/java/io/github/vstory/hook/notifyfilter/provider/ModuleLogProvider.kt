@@ -36,8 +36,8 @@ class ModuleLogProvider : ContentProvider() {
             runCatching {
                 ctx.getSharedPreferences(LSP_HEARTBEAT_PREFS, Context.MODE_PRIVATE)
                     .edit()
-                    .putLong("last_alive", values.getAsLong(COL_POST_TIME) ?: System.currentTimeMillis())
-                    .putString("last_process", values.getAsString(COL_TITLE).orEmpty())
+                    .putLong(KEY_LAST_ALIVE, values.getAsLong(COL_POST_TIME) ?: System.currentTimeMillis())
+                    .putString(KEY_LAST_PROCESS, values.getAsString(COL_TITLE).orEmpty())
                     .apply()
             }
             return null
@@ -98,6 +98,10 @@ class ModuleLogProvider : ContentProvider() {
         /** Dev 5：模块心跳决策标记（system_server 内 hook 成功后回写，不入库） */
         const val LSP_ALIVE_DECISION = "LSP_ALIVE"
         const val LSP_HEARTBEAT_PREFS = "lsp_heartbeat"
+
+        /** 心跳偏好内的键（读方：KeepAliveManager.isLspActive / DiagExporter.lspStatusLine） */
+        const val KEY_LAST_ALIVE = "last_alive"
+        const val KEY_LAST_PROCESS = "last_process"
 
         const val COL_PACKAGE = "package"
         const val COL_CHANNEL = "channel"

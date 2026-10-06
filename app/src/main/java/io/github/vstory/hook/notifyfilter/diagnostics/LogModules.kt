@@ -11,6 +11,7 @@ package io.github.vstory.hook.notifyfilter.diagnostics
  * 任一模块刷屏不再影响其它模块的 24 小时覆盖。
  *
  * TAG 一律用 ASCII：既作文件名（避免编码/解压乱码），也作落盘段名。
+ * 导出 ZIP 内的条目名同样只用 ASCII（见 [fileName]），中文模块名只出现在文件内容与 00 清单里。
  */
 object LogModules {
 
@@ -58,7 +59,7 @@ object LogModules {
     fun desc(module: String): String = when (module) {
         NLS -> "监听服务生命周期：onListenerConnected/Disconnected、请求重绑、重连补扫、服务销毁"
         PIPE -> "每条通知的处理流水：接收 → AI/规则决策 → 拦截清除（放行/拦截/白名单/保护类型）"
-        HOOK -> "LSPosed 模块从 system_server 回流的关键事件（NMS 拦截、模块心跳）"
+        HOOK -> "LSPosed 模块在 system_server 内拦截的通知记录回流（NMS 拦截命中 + 心跳）"
         KEEP -> "闹钟看门狗心跳、断连自愈与 Shizuku 强制修复、系统侧诊断（dumpsys notification）"
         MODEL -> "内置模型加载、端上学习 delta 应用与重拟合、重置基线"
         UPDATE -> "应用内更新检查、APK 下载与 sha256 校验、安装提示"
@@ -67,11 +68,15 @@ object LogModules {
         else -> ""
     }
 
-    /** zip 内文件名：序号 + 中文名 + TAG，解压后按模块顺序排列 */
+    /**
+     * zip 内条目名：`<两位序号>-<TAG>.log`，与落盘文件 `ring/<TAG>.log` 同名。
+     * **只用 ASCII** —— 中文名会让不认 EFS 位的解压器（如 Info-ZIP 6.00）显示成乱码，
+     * 带空格/全角括号还会逼得 shell 引用必须加引号。中文名见 [title]，写在文件内容与 00 清单里。
+     */
     fun fileName(module: String): String {
         val idx = ALL.indexOf(module)
         val no = if (idx >= 0) String.format("%02d", idx + 1) else "99"
-        return "$no-${title(module)}-$module.log"
+        return "$no-$module.log"
     }
 
     /**
@@ -80,12 +85,15 @@ object LogModules {
      */
     fun logcatTagFor(module: String): String? = when (module) {
         NLS -> "NfWatch"
-        HOOK -> "NotifyFilter"
         UPDATE -> "UpdateVM"
         MODEL -> "ModelRepository"
         else -> null
     }
 
-    /** logcat 抓取的全部 tag（其它一律 *:S 静默，避免导出里混进系统噪声） */
-    val LOGCAT_TAGS: List<String> = listOf("NfWatch", "NotifyFilter", "UpdateVM", "ModelRepository")
+    /**
+     * logcat 抓取的全部 tag（其它一律 *:S 静默，避免导出里混进系统噪声）。
+     * 只列 **APP 自身进程**产出日志的 tag：无提权的 `logcat -d` 受 logd 按 uid 过滤，
+     * 读不到 system_server（uid 1000）的行 —— 模块端 tag `NotifyFilter` 属后者，列了也恒空。
+     */
+    val LOGCAT_TAGS: List<String> = listOf("NfWatch", "UpdateVM", "ModelRepository")
 }

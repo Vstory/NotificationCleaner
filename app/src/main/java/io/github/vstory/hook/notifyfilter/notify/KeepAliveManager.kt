@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import io.github.vstory.hook.notifyfilter.R
+import io.github.vstory.hook.notifyfilter.provider.ModuleLogProvider
 
 /**
  * 保活能力探测与执行（Plan.md §7）：
@@ -59,8 +60,8 @@ class KeepAliveManager(private val context: Context) {
         }
         // 证据 1：system_server 心跳
         runCatching {
-            if (context.getSharedPreferences("lsp_heartbeat", Context.MODE_PRIVATE)
-                    .getLong("last_alive", 0L) > 0L
+            if (context.getSharedPreferences(ModuleLogProvider.LSP_HEARTBEAT_PREFS, Context.MODE_PRIVATE)
+                    .getLong(ModuleLogProvider.KEY_LAST_ALIVE, 0L) > 0L
             ) return true
         }
         // 证据 2：Settings.Secure 模块列表
