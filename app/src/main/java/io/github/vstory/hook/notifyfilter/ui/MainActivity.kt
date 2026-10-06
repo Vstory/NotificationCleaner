@@ -253,10 +253,6 @@ class MainActivity : ComponentActivity() {
                 },
             )
             else -> {
-                val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
-                    viewModel(key = "updateEntry", factory = viewModelFactory {
-                        initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() }
-                    })
                 MainScaffold(
                     themeConfig = themeConfig,
                     onThemeConfigChange = onThemeConfigChange,
@@ -272,21 +268,12 @@ class MainActivity : ComponentActivity() {
                     } else {
                         null
                     },
-                    // 这两个弹窗是跨页全局的，只能由外壳的宿主 Scaffold 渲染
-                    // （调用点必须在 Scaffold 作用域内的原因见 MainScaffold 的 globalOverlays）
-                    globalOverlays = {
-                        io.github.vstory.hook.notifyfilter.ui.update.UpdatePromptDialog(vm = updateVm, onDismiss = {})
-                        if (alertVisible && (lostListener || lostBattery || lostNotifications)) {
-                            PermissionLostDialog(
-                                lostListener = lostListener,
-                                lostBattery = lostBattery,
-                                lostNotifications = lostNotifications,
-                                onDismiss = { alertVisible = false },
-                            )
-                        }
-                    },
                 )
                 // 进入应用自动检查更新（1.1.8）：有更新弹窗，无更新静默
+                val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
+                    viewModel(key = "updateEntry", factory = viewModelFactory {
+                        initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() }
+                    })
                 LaunchedEffect(entryCount) {
                     val s = updateVm.state.value
                     // 正在下载/待安装时不打断，避免重复检查取消进行中的下载
@@ -295,6 +282,15 @@ class MainActivity : ComponentActivity() {
                     ) {
                         updateVm.checkUpdate()
                     }
+                }
+                io.github.vstory.hook.notifyfilter.ui.update.UpdatePromptDialog(vm = updateVm, onDismiss = {})
+                if (alertVisible && (lostListener || lostBattery || lostNotifications)) {
+                    PermissionLostDialog(
+                        lostListener = lostListener,
+                        lostBattery = lostBattery,
+                        lostNotifications = lostNotifications,
+                        onDismiss = { alertVisible = false },
+                    )
                 }
             }
         }
@@ -328,7 +324,6 @@ fun MainScaffold(
     themeConfig: ThemeConfig,
     onThemeConfigChange: (ThemeConfig) -> Unit,
     onPredictiveBackChange: ((Boolean) -> Unit)? = null,
-    globalOverlays: @Composable () -> Unit = {},
 ) {
     val backStack = rememberNavBackStack<Route>(Route.Main)
     val navigator = remember { Navigator(backStack) }
@@ -350,95 +345,87 @@ fun MainScaffold(
     var predictiveBackEnabled by remember(storedPredictiveBack) { mutableStateOf(storedPredictiveBack) }
 
     CompositionLocalProvider(LocalNavigator provides navigator) {
-        // Overlay* 组件把弹窗注册给「最近的 Scaffold」的 popup 宿主（LocalDialogStates）；在
-        // Scaffold 之外调用只会写进 staticCompositionLocalOf 的默认状态表，而那张表没有任何
-        // 宿主读它 —— 弹窗静默不出现（无异常、无日志）。页面 Scaffold 都藏在 NavDisplay 的
-        // entry 里，跨页弹窗（更新提示、权限失效提醒）够不到，因此在外层补一个只作宿主的
-        // Scaffold：它不设顶/底栏，content 也不消费它的 padding，尺寸与内边距全交给 entry。
-        Scaffold(modifier = Modifier.fillMaxSize()) { _ ->
-            NavDisplay(
-                backStack = backStack,
-                onBack = { navigator.pop() },
-                effects = NavDisplayEffects(
-                    cornerClipRadius = rememberNavSystemCornerRadius(),
-                ),
-            ) {
-                entry<Route.Main>(swipeDismiss = swipeDismiss) {
-                    MainPage(
-                        mainPagerState = mainPagerState,
-                        navigator = navigator,
-                        tabs = tabs,
-                        themeConfig = themeConfig,
-                    )
-                }
-                entry<Route.Advanced>(swipeDismiss = swipeDismiss) {
-                    AdvancedPermissionScreen(onBack = { navigator.pop() })
-                }
-                entry<Route.AiModel>(swipeDismiss = swipeDismiss) {
-                    AiModelScreen(
-                        onBack = { navigator.pop() },
-                        onOpenLearned = { navigator.push(Route.Stats("learned")) },
-                    )
-                }
-                entry<Route.ThemeSettings>(swipeDismiss = swipeDismiss) {
-                    ThemeSettingsScreen(
-                        themeConfig = themeConfig,
-                        onThemeConfigChange = onThemeConfigChange,
-                        predictiveBackEnabled = predictiveBackEnabled,
-                        onPredictiveBackChange = onPredictiveBackChange?.let { apply ->
-                            { enabled ->
-                                predictiveBackEnabled = enabled
-                                apply(enabled)
-                            }
-                        },
-                        swipeDismissEnabled = swipeDismissEnabled,
-                        onSwipeDismissChange = { enabled ->
-                            swipeDismissEnabled = enabled
-                            ServiceLocator.appScope.launch { ServiceLocator.settings.setSwipeDismiss(enabled) }
-                        },
-                        onBack = { navigator.pop() },
-                    )
-                }
-                entry<Route.About>(swipeDismiss = swipeDismiss) {
-                    val uriHandler = LocalUriHandler.current
-                    AboutScreen(
-                        onBack = { navigator.pop() },
-                        onOpenUrl = { url -> uriHandler.openUri(url) },
-                    )
-                }
-                entry<Route.Stats>(swipeDismiss = swipeDismiss) { route ->
-                    StatsDetailScreen(route.mode, onBack = { navigator.pop() })
-                }
-                entry<Route.RuleEdit>(swipeDismiss = swipeDismiss) {
-                    RuleEditScreen(
-                        onBack = { navigator.pop() },
-                        openAppPicker = { navigator.push(Route.AppPicker("选择 APP")) },
-                    )
-                }
-                entry<Route.AppPicker>(swipeDismiss = swipeDismiss) { route ->
-                    AppPickerScreen(
-                        title = route.title,
-                        multiSelect = true,
-                        onBack = { navigator.pop() },
-                        onConfirm = {
-                            // 白名单模式：直接入库；规则模式：结果由 RuleEditScreen 回读
-                            if (route.title == "白名单") {
-                                ServiceLocator.appScope.launch {
-                                    it.forEach { (pkg, label) ->
-                                        ServiceLocator.db.whitelistDao().insert(
-                                            io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity(packageName = pkg, appName = label),
-                                        )
-                                    }
-                                }
-                            } else {
-                                AppPickerSession.result = it
-                            }
-                            navigator.pop()
-                        },
-                    )
-                }
+        NavDisplay(
+            backStack = backStack,
+            onBack = { navigator.pop() },
+            effects = NavDisplayEffects(
+                cornerClipRadius = rememberNavSystemCornerRadius(),
+            ),
+        ) {
+            entry<Route.Main>(swipeDismiss = swipeDismiss) {
+                MainPage(
+                    mainPagerState = mainPagerState,
+                    navigator = navigator,
+                    tabs = tabs,
+                    themeConfig = themeConfig,
+                )
             }
-            globalOverlays()
+            entry<Route.Advanced>(swipeDismiss = swipeDismiss) {
+                AdvancedPermissionScreen(onBack = { navigator.pop() })
+            }
+            entry<Route.AiModel>(swipeDismiss = swipeDismiss) {
+                AiModelScreen(
+                    onBack = { navigator.pop() },
+                    onOpenLearned = { navigator.push(Route.Stats("learned")) },
+                )
+            }
+            entry<Route.ThemeSettings>(swipeDismiss = swipeDismiss) {
+                ThemeSettingsScreen(
+                    themeConfig = themeConfig,
+                    onThemeConfigChange = onThemeConfigChange,
+                    predictiveBackEnabled = predictiveBackEnabled,
+                    onPredictiveBackChange = onPredictiveBackChange?.let { apply ->
+                        { enabled ->
+                            predictiveBackEnabled = enabled
+                            apply(enabled)
+                        }
+                    },
+                    swipeDismissEnabled = swipeDismissEnabled,
+                    onSwipeDismissChange = { enabled ->
+                        swipeDismissEnabled = enabled
+                        ServiceLocator.appScope.launch { ServiceLocator.settings.setSwipeDismiss(enabled) }
+                    },
+                    onBack = { navigator.pop() },
+                )
+            }
+            entry<Route.About>(swipeDismiss = swipeDismiss) {
+                val uriHandler = LocalUriHandler.current
+                AboutScreen(
+                    onBack = { navigator.pop() },
+                    onOpenUrl = { url -> uriHandler.openUri(url) },
+                )
+            }
+            entry<Route.Stats>(swipeDismiss = swipeDismiss) { route ->
+                StatsDetailScreen(route.mode, onBack = { navigator.pop() })
+            }
+            entry<Route.RuleEdit>(swipeDismiss = swipeDismiss) {
+                RuleEditScreen(
+                    onBack = { navigator.pop() },
+                    openAppPicker = { navigator.push(Route.AppPicker("选择 APP")) },
+                )
+            }
+            entry<Route.AppPicker>(swipeDismiss = swipeDismiss) { route ->
+                AppPickerScreen(
+                    title = route.title,
+                    multiSelect = true,
+                    onBack = { navigator.pop() },
+                    onConfirm = {
+                        // 白名单模式：直接入库；规则模式：结果由 RuleEditScreen 回读
+                        if (route.title == "白名单") {
+                            ServiceLocator.appScope.launch {
+                                it.forEach { (pkg, label) ->
+                                    ServiceLocator.db.whitelistDao().insert(
+                                        io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity(packageName = pkg, appName = label),
+                                    )
+                                }
+                            }
+                        } else {
+                            AppPickerSession.result = it
+                        }
+                        navigator.pop()
+                    },
+                )
+            }
         }
     }
 }
