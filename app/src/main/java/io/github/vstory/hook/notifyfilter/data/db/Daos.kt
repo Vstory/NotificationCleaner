@@ -31,7 +31,10 @@ interface NotificationDao {
         if (existing != null) {
             // 只改 seq：dismissTime 留给三态判定，历史版本不参与「还在不在通知栏」
             update(existing.copy(seq = existing.seq + 1))
-            insert(n.copy(contentHash = hash, seq = 0, dismissTime = -1, dismissReason = 0))
+            // 不能在这里重置 dismissTime/dismissReason：两条写入路径都已在构造时按
+            // 「这条是否进过通知栏」置位（拦截类直接落 postTime），退位的新版本必须沿用，
+            // 否则被拦的通知会被判成「正显示」
+            insert(n.copy(contentHash = hash, seq = 0))
             trimVersions(n.key, MAX_VERSIONS_PER_KEY)
             return SlotOutcome(previousDecision = existing.decision, inserted = false)
         }
