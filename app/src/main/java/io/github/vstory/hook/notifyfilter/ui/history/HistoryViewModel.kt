@@ -2,12 +2,8 @@ package io.github.vstory.hook.notifyfilter.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.withTransaction
 import io.github.vstory.hook.notifyfilter.ServiceLocator
-import io.github.vstory.hook.notifyfilter.ai.SpamTuner
 import io.github.vstory.hook.notifyfilter.data.ModelRepository
-import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_AI
-import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_RULE
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_MANUAL_MARKED_AD
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_PASSED
 import io.github.vstory.hook.notifyfilter.data.db.FILTERED_DECISIONS
@@ -25,20 +21,26 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-enum class HistoryFilter { ALL, FILTERED, PASSED }
+/** 三态：同 key 最新版本还在不在通知栏，与「被后到通知覆盖」三者互斥 */
+enum class HistoryTab { VISIBLE, DISMISSED, HISTORY }
+
+/** 决策维度：Tab 位让给三态后下沉进高级筛选 */
+enum class DecisionFilter { ALL, FILTERED, PASSED }
 
 /**
- * 历史高级筛选（Dev 6）：App（多选，复用规则页 AppPicker，含系统应用）+ 仅看已学习 +
- * 日期范围（含起止当天）。任一条件为空/关闭即不参与过滤。
+ * 历史高级筛选（Dev 6）：决策维度 + App（多选，复用规则页 AppPicker，含系统应用）+
+ * 仅看已学习 + 日期范围（含起止当天）。任一条件为空/关闭即不参与过滤。
  */
 data class HistoryAdvancedFilter(
+    val decision: DecisionFilter = DecisionFilter.ALL,
     val apps: List<Pair<String, String>> = emptyList(), // pkg to label；空 = 全部 App
     val learnedOnly: Boolean = false,
     val startDate: java.time.LocalDate? = null,
     val endDate: java.time.LocalDate? = null,
 ) {
     val isDefault: Boolean
-        get() = apps.isEmpty() && !learnedOnly && startDate == null && endDate == null
+        get() = decision == DecisionFilter.ALL && apps.isEmpty() && !learnedOnly &&
+            startDate == null && endDate == null
 }
 
 /**
@@ -55,7 +57,7 @@ class HistoryViewModel(
     private val modelRepo: ModelRepository,
 ) : ViewModel() {
 
-    val filter = MutableStateFlow(HistoryFilter.ALL)
+    val tab = MutableStateFlow(HistoryTab.VISIBLE)
 
     /** 历史搜索（匹配 App 名称/标题/内容，忽略大小写） */
     val search = MutableStateFlow("")
@@ -64,20 +66,20 @@ class HistoryViewModel(
     val advancedFilter = MutableStateFlow(HistoryAdvancedFilter())
 
     /**
-     * 历史列表（1.3.2 P2-5：筛选下推 SQL）——tab 切换用 flatMapLatest 选择对应查询，
+     * 历史列表（1.3.2 P2-5：三态下推 SQL）——tab 切换用 flatMapLatest 选择对应查询，
      * 每次 DB 变更只重查/重映当前 tab 的行（原来每条变更都重查 500 行再内存过滤）；
      * 搜索 200ms 防抖；显式 flowOn + distinctUntilChanged。
-     * 收益边界：各 tab 仍受 LIMIT 500 约束（"已过滤"展示的是最新 500 条过滤项，非全部）。
-     * Dev 6：高级筛选（App/已学习/日期）在 500 行窗口内内存过滤。
+     * 收益边界：各 tab 仍受 LIMIT 500 约束。
+     * 决策维度（原「已过滤」tab）与 App/已学习/日期同在窗口内内存过滤——三态 × 决策共 9 组，
+     * 不值得为 SQL 下推铺 9 个查询。
      */
     val list: StateFlow<List<NotificationEntity>> =
         combine(
-            filter.flatMapLatest { f ->
-                when (f) {
-                    HistoryFilter.ALL -> dao.listAll()
-                    HistoryFilter.FILTERED -> dao.listByDecisions(FILTERED_DECISIONS.toList())
-                    // "正常"= 未被过滤（含白名单/媒体/会话/常驻等保护型通知）
-                    HistoryFilter.PASSED -> dao.listNotInDecisions(FILTERED_DECISIONS.toList())
+            tab.flatMapLatest { t ->
+                when (t) {
+                    HistoryTab.VISIBLE -> dao.listVisible()
+                    HistoryTab.DISMISSED -> dao.listDismissed()
+                    HistoryTab.HISTORY -> dao.listHistory()
                 }
             },
             search.debounce(200),
@@ -104,11 +106,19 @@ class HistoryViewModel(
         val startMs = adv.startDate?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
         val endMs = adv.endDate?.plusDays(1)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
         return rows.filter { n ->
-            (adv.apps.isEmpty() || adv.apps.any { it.first == n.packageName }) &&
+            decide(adv.decision, n) &&
+                (adv.apps.isEmpty() || adv.apps.any { it.first == n.packageName }) &&
                 (!adv.learnedOnly || n.learned) &&
                 (startMs == null || n.postTime >= startMs) &&
                 (endMs == null || n.postTime < endMs)
         }
+    }
+
+    private fun decide(f: DecisionFilter, n: NotificationEntity): Boolean = when (f) {
+        DecisionFilter.ALL -> true
+        DecisionFilter.FILTERED -> n.decision in FILTERED_DECISIONS
+        // "正常"= 未被过滤（含白名单/媒体/会话/常驻等保护型通知）
+        DecisionFilter.PASSED -> n.decision !in FILTERED_DECISIONS
     }
 
     fun setAdvancedFilter(f: HistoryAdvancedFilter) {
@@ -125,8 +135,8 @@ class HistoryViewModel(
         _selected.value = n
     }
 
-    fun setFilter(f: HistoryFilter) {
-        filter.value = f
+    fun setTab(t: HistoryTab) {
+        tab.value = t
     }
 
     fun clearToast() {

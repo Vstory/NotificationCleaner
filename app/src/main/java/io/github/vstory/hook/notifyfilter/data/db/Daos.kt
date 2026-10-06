@@ -67,23 +67,12 @@ interface NotificationDao {
     suspend fun updateAppName(pkg: String, appName: String)
 
     /** 列表一律只看当前版本（seq = 0）：旧版本归「历史」，不进主列表与统计口径 */
-    @Query("SELECT * FROM notifications WHERE seq = 0 ORDER BY postTime DESC LIMIT 500")
-    fun listAll(): Flow<List<NotificationEntity>>
-
-    @Query("SELECT * FROM notifications WHERE seq = 0 AND decision = :decision ORDER BY postTime DESC LIMIT 500")
-    fun listByDecision(decision: String): Flow<List<NotificationEntity>>
+    @Query("SELECT * FROM notifications WHERE seq = 0 AND dismissTime = -1 ORDER BY postTime DESC LIMIT 500")
+    fun listVisible(): Flow<List<NotificationEntity>>
 
     /** 按决策集合查询（1.2.1：模块端拦截的 *_MODULE 决策与 NLS 决策合并展示） */
     @Query("SELECT * FROM notifications WHERE seq = 0 AND decision IN (:decisions) ORDER BY postTime DESC LIMIT 500")
     fun listByDecisions(decisions: List<String>): Flow<List<NotificationEntity>>
-
-    /** 决策集合之外的通知（1.3.2 P2-5："正常" tab 下推 SQL，不再内存过滤 500 行） */
-    @Query("SELECT * FROM notifications WHERE seq = 0 AND decision NOT IN (:decisions) ORDER BY postTime DESC LIMIT 500")
-    fun listNotInDecisions(decisions: List<String>): Flow<List<NotificationEntity>>
-
-    /** 正显示：同 key 最新版本且仍在通知栏 */
-    @Query("SELECT * FROM notifications WHERE seq = 0 AND dismissTime = -1 ORDER BY postTime DESC LIMIT 500")
-    fun listVisible(): Flow<List<NotificationEntity>>
 
     /** 已取消：同 key 最新版本且已被撤销 */
     @Query("SELECT * FROM notifications WHERE seq = 0 AND dismissTime != -1 ORDER BY postTime DESC LIMIT 500")

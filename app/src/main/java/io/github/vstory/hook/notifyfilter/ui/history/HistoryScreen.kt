@@ -1,5 +1,15 @@
 package io.github.vstory.hook.notifyfilter.ui.history
 
+import android.service.notification.NotificationListenerService.REASON_APP_CANCEL
+import android.service.notification.NotificationListenerService.REASON_APP_CANCEL_ALL
+import android.service.notification.NotificationListenerService.REASON_CANCEL
+import android.service.notification.NotificationListenerService.REASON_CHANNEL_BANNED
+import android.service.notification.NotificationListenerService.REASON_CLICK
+import android.service.notification.NotificationListenerService.REASON_LISTENER_CANCEL
+import android.service.notification.NotificationListenerService.REASON_LISTENER_CANCEL_ALL
+import android.service.notification.NotificationListenerService.REASON_PACKAGE_BANNED
+import android.service.notification.NotificationListenerService.REASON_SNOOZED
+import android.service.notification.NotificationListenerService.REASON_TIMEOUT
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,11 +19,15 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +62,7 @@ import io.github.vstory.hook.notifyfilter.data.db.DECISION_MANUAL_MARKED_AD
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_MEDIA
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_ONGOING
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_WHITELIST
+import io.github.vstory.hook.notifyfilter.data.db.FILTERED_DECISIONS
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveManager
 import io.github.vstory.hook.notifyfilter.ui.component.CardItem
@@ -74,16 +89,19 @@ import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TabRowWithContour
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Filter
+import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.RadioButtonLocation
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -93,6 +111,27 @@ private val timeFmt = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 /** internal：统计明细页（Dev 14 起可点开详情）复用同一时间格式 */
 internal fun formatTime(epochMs: Long): String =
     timeFmt.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
+
+private val hourMinuteFmt = DateTimeFormatter.ofPattern("HH:mm")
+
+/**
+ * 列表时间：当天用相对时间（"刚刚 / N 分钟前 / N 小时前"），跨天回落绝对格式——
+ * 通知列表里"多久之前"比精确时刻更可读。now 只在重组时求值，不自行走时。
+ */
+internal fun formatRelativeTime(epochMs: Long, now: Long = System.currentTimeMillis()): String {
+    val diff = now - epochMs
+    if (diff < 0) return formatTime(epochMs)
+    if (diff < 60_000L) return "刚刚"
+    if (diff < 3_600_000L) return "${diff / 60_000L} 分钟前"
+    val zone = ZoneId.systemDefault()
+    val day = Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    return when {
+        day == today -> "${diff / 3_600_000L} 小时前"
+        day == today.minusDays(1) -> "昨天 ${hourMinuteFmt.format(Instant.ofEpochMilli(epochMs).atZone(zone))}"
+        else -> formatTime(epochMs)
+    }
+}
 
 /** 日期分组头格式（Dev 6）："9月25日" */
 private val dayFmt = DateTimeFormatter.ofPattern("M月d日")
@@ -107,7 +146,7 @@ fun HistoryScreen(
     bottomPadding: Dp = 0.dp,
 ) {
     val list by vm.list.collectAsState()
-    val filter by vm.filter.collectAsState()
+    val tab by vm.tab.collectAsState()
     val search by vm.search.collectAsState()
     val selected by vm.selected.collectAsState()
     val toast by vm.toast.collectAsState()
@@ -117,10 +156,11 @@ fun HistoryScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     var hadData by remember { mutableStateOf(false) }
     var filterOpen by remember { mutableStateOf(false) }
+    var searchExpanded by remember { mutableStateOf(false) }
     val advCount = advancedActiveCount(adv)
 
-    // 修复：打开页面/切换筛选/首次加载后定位到最新通知（列表顶部）
-    LaunchedEffect(list.isEmpty(), filter) {
+    // 修复：打开页面/切换 tab/首次加载后定位到最新通知（列表顶部）
+    LaunchedEffect(list.isEmpty(), tab) {
         if (list.isNotEmpty() && !hadData) {
             listState.scrollToItem(0)
         }
@@ -154,24 +194,64 @@ fun HistoryScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             BlurredBar(backdrop = backdrop, blurActive = blurActive) {
-                TopAppBar(
-                    title = "历史",
-                    color = barColor,
-                    scrollBehavior = scrollBehavior,
-                    actions = {
-                        IconButton(onClick = { filterOpen = true }) {
-                            Icon(
-                                imageVector = MiuixIcons.Filter,
-                                contentDescription = "筛选",
-                                tint = if (advCount > 0) {
-                                    MiuixTheme.colorScheme.primary
-                                } else {
-                                    MiuixTheme.colorScheme.onSurface
-                                },
+                // 搜索收进顶栏图标（方案 A）：展开就地整条换成 miuix SearchBar，省掉常驻占位
+                // 输入条那一行（SearchBarDefaults.InputFieldMinHeight 45dp + 周边距）
+                if (searchExpanded) {
+                    SearchBar(
+                        inputField = {
+                            InputField(
+                                query = search,
+                                onQueryChange = { vm.search.value = it },
+                                onSearch = {},
+                                expanded = true,
+                                onExpandedChange = { if (!it) searchExpanded = false },
+                                label = "搜索 App / 标题 / 内容",
                             )
-                        }
-                    },
-                )
+                        },
+                        expanded = true,
+                        onExpandedChange = { if (!it) searchExpanded = false },
+                        outsideEndAction = {
+                            // 不必手动清 query：InputField 收起时会自行清空（miuix 行为）
+                            TextButton(text = "取消", onClick = { searchExpanded = false })
+                        },
+                        content = {},
+                        // SearchBar 自带 12dp 横距但不吃状态栏 inset（TopAppBar 由
+                        // defaultWindowInsetsPadding 处理），这里补上
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top)),
+                    )
+                } else {
+                    TopAppBar(
+                        title = "历史",
+                        color = barColor,
+                        scrollBehavior = scrollBehavior,
+                        actions = {
+                            IconButton(onClick = { searchExpanded = true }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Search,
+                                    contentDescription = "搜索",
+                                    tint = if (search.isNotBlank()) {
+                                        MiuixTheme.colorScheme.primary
+                                    } else {
+                                        MiuixTheme.colorScheme.onSurface
+                                    },
+                                )
+                            }
+                            IconButton(onClick = { filterOpen = true }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Filter,
+                                    contentDescription = "筛选",
+                                    tint = if (advCount > 0) {
+                                        MiuixTheme.colorScheme.primary
+                                    } else {
+                                        MiuixTheme.colorScheme.onSurface
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
             }
         },
     ) { padding ->
@@ -185,41 +265,27 @@ fun HistoryScreen(
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
-                TabRowWithContour(
-                    tabs = listOf("全部", "已过滤", "正常"),
-                    selectedTabIndex = HistoryFilter.entries.indexOf(filter).coerceAtLeast(0),
-                    onTabSelected = { vm.setFilter(HistoryFilter.entries[it]) },
+                TabRow(
+                    tabs = listOf("正显示", "已取消", "历史"),
+                    selectedTabIndex = HistoryTab.entries.indexOf(tab),
+                    onTabSelected = { vm.setTab(HistoryTab.entries[it]) },
                 )
             }
-            var searchExpanded by remember { mutableStateOf(false) }
-            SearchBar(
-                inputField = {
-                    InputField(
-                        query = search,
-                        onQueryChange = { vm.search.value = it },
-                        onSearch = {},
-                        expanded = searchExpanded,
-                        onExpandedChange = { searchExpanded = it },
-                        label = "搜索 App / 标题 / 内容",
-                    )
-                },
-                expanded = searchExpanded,
-                onExpandedChange = { searchExpanded = it },
-                outsideEndAction = {
-                    TextButton(text = "取消", onClick = { searchExpanded = false })
-                },
-                content = {},
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(4.dp))
             if (list.isEmpty()) {
                 Column(
                     Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(if (search.isBlank()) "暂无通知记录" else "无匹配结果", style = MiuixTheme.textStyles.headline2)
-                    if (search.isBlank()) {
+                    val emptyTitle = when {
+                        search.isNotBlank() || !adv.isDefault -> "无匹配结果"
+                        tab == HistoryTab.VISIBLE -> "当前没有通知在通知栏"
+                        tab == HistoryTab.DISMISSED -> "暂无已取消的通知"
+                        else -> "暂无历史版本"
+                    }
+                    Text(emptyTitle, style = MiuixTheme.textStyles.headline2)
+                    // 权限提示只在「正显示」空列表下有意义：另外两个 tab 空是正常态
+                    if (tab == HistoryTab.VISIBLE && search.isBlank() && adv.isDefault) {
                         Spacer(Modifier.height(4.dp))
                         Text("请先在系统设置中授予通知监听权限", style = MiuixTheme.textStyles.footnote1)
                     }
@@ -392,7 +458,12 @@ private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(n.appName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
-                    Text(formatTime(n.postTime), style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.outline)
+                    // 原用 outline：浅色下 #D9D9D9，在卡片底上几乎不可读
+                    Text(
+                        formatRelativeTime(n.postTime),
+                        style = MiuixTheme.textStyles.footnote2,
+                        color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                    )
                     Spacer(Modifier.weight(1f))
                     when (n.decision) {
                         DECISION_FILTERED_BY_AI, DECISION_FILTERED_BY_AI_MODULE ->
@@ -415,12 +486,19 @@ private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
                 if (n.content.isNotEmpty()) {
                     Text(n.content, style = MiuixTheme.textStyles.footnote1, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
-                // 右下角：简单广告率（按阈值区间着色）
+                // 底行：左「这条为什么不在通知栏」/ 右广告率（按阈值区间着色）
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    stateLabel(n)?.let {
+                        Text(
+                            it,
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
                     val pct = (n.adProbability * 100).toInt()
                     Text(
                         "广告率 $pct%",
@@ -428,7 +506,7 @@ private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
                         color = when {
                             n.adProbability >= 0.8f -> MiuixTheme.colorScheme.error
                             n.adProbability >= 0.5f -> MiuixTheme.colorScheme.onTertiaryContainer
-                            else -> MiuixTheme.colorScheme.outline
+                            else -> MiuixTheme.colorScheme.onSurfaceVariantActions
                         },
                     )
                 }
@@ -437,9 +515,36 @@ private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
     }
 }
 
+/**
+ * 底行状态说明：这条为什么不在通知栏里。
+ * 拦截类由写入侧直接把 dismissTime 落成 postTime（通知从未进通知栏，等不到 removed 回调），
+ * reason 因此停在默认 0——与系统「原因未知」的 0 同值，只能借决策集合区分这两种来源。
+ */
+private fun stateLabel(n: NotificationEntity): String? = when {
+    n.seq > 0 -> "旧版本"
+    n.dismissTime < 0 -> null
+    n.dismissReason == 0 -> if (n.decision in FILTERED_DECISIONS) "已被拦截" else "已移除"
+    else -> dismissReasonText(n.dismissReason)
+}
+
+/** NLS 的 reason 常量 → 展示文案 */
+private fun dismissReasonText(reason: Int): String = when (reason) {
+    REASON_CANCEL -> "已清除"
+    REASON_CLICK -> "点击后移除"
+    REASON_APP_CANCEL, REASON_APP_CANCEL_ALL -> "应用撤回"
+    // 本模块自己撤下的（如标注广告后清理通知栏）
+    REASON_LISTENER_CANCEL, REASON_LISTENER_CANCEL_ALL -> "本应用移除"
+    REASON_PACKAGE_BANNED -> "应用被停用"
+    REASON_CHANNEL_BANNED -> "通道被关闭"
+    REASON_SNOOZED -> "已延后"
+    REASON_TIMEOUT -> "超时"
+    else -> "系统移除"
+}
+
 /** 生效中的筛选条件数：驱动入口行摘要与「清除筛选条件」行的显隐 */
 private fun advancedActiveCount(adv: HistoryAdvancedFilter): Int {
     var c = 0
+    if (adv.decision != DecisionFilter.ALL) c++
     if (adv.apps.isNotEmpty()) c++
     if (adv.learnedOnly) c++
     if (adv.startDate != null) c++
@@ -454,6 +559,25 @@ private fun advancedActiveCount(adv: HistoryAdvancedFilter): Int {
 @Composable
 private fun AdvancedFilterRows(vm: HistoryViewModel, onOpenAppPicker: () -> Unit) {
     val adv by vm.advancedFilter.collectAsState()
+    // 决策维度（原「全部/已过滤/正常」tab）：Tab 位让给三态后在此收口
+    RadioButtonPreference(
+        title = "全部",
+        selected = adv.decision == DecisionFilter.ALL,
+        onClick = { vm.setAdvancedFilter(adv.copy(decision = DecisionFilter.ALL)) },
+        radioButtonLocation = RadioButtonLocation.End,
+    )
+    RadioButtonPreference(
+        title = "已过滤",
+        selected = adv.decision == DecisionFilter.FILTERED,
+        onClick = { vm.setAdvancedFilter(adv.copy(decision = DecisionFilter.FILTERED)) },
+        radioButtonLocation = RadioButtonLocation.End,
+    )
+    RadioButtonPreference(
+        title = "正常",
+        selected = adv.decision == DecisionFilter.PASSED,
+        onClick = { vm.setAdvancedFilter(adv.copy(decision = DecisionFilter.PASSED)) },
+        radioButtonLocation = RadioButtonLocation.End,
+    )
     ArrowPreference(
         title = "应用",
         summary = if (adv.apps.isEmpty()) "全部 App" else "已选 ${adv.apps.size} 个",
