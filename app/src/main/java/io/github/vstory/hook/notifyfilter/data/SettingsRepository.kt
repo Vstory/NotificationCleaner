@@ -51,6 +51,19 @@ class SettingsRepository(private val context: Context) {
     /** 在系统多任务界面隐藏本 APP 的后台卡片（防误滑删除，切换后重建任务生效） */
     val excludeFromRecents: Flow<Boolean> = context.dataStore.data.map { it[keyHideRecents] ?: false }
 
+    // ---- 底栏形态：悬浮毛玻璃胶囊 / 贴底普通底栏（见 ui/MainActivity.kt 的两档分支）----
+    private val keyFloatingNavBar = booleanPreferencesKey("floating_nav_bar")
+
+    /**
+     * 底栏形态；默认 true = 悬浮毛玻璃胶囊（改动前的唯一形态）。
+     * 贴底档是兼容与可读性的兜底，默认值必须保持已发布形态，否则老用户升级后观感突变。
+     */
+    val floatingNavBar: Flow<Boolean> = context.dataStore.data.map { it[keyFloatingNavBar] ?: true }
+
+    suspend fun setFloatingNavBar(value: Boolean) {
+        context.dataStore.edit { it[keyFloatingNavBar] = value }
+    }
+
     /** 累计拦截数（常驻通知展示）：AI 拦截 / 用户规则拦截 */
     val filteredAiCount: Flow<Int> = context.dataStore.data.map { it[keyFilteredAi] ?: 0 }
     val filteredRuleCount: Flow<Int> = context.dataStore.data.map { it[keyFilteredRule] ?: 0 }

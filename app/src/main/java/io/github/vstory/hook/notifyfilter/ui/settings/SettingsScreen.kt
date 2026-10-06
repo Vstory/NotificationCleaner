@@ -75,6 +75,7 @@ class SettingsViewModel(
     val threshold = settings.threshold.stateIn(viewModelScope, SharingStarted.Eagerly, 0.8f)
     val interceptMode = settings.interceptMode.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val excludeFromRecents = settings.excludeFromRecents.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val floatingNavBar = settings.floatingNavBar.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
@@ -129,6 +130,10 @@ class SettingsViewModel(
 
     fun setExcludeFromRecents(v: Boolean) {
         viewModelScope.launch { settings.setExcludeFromRecents(v) }
+    }
+
+    fun setFloatingNavBar(v: Boolean) {
+        viewModelScope.launch { settings.setFloatingNavBar(v) }
     }
 
     // ---- LSPosed 框架服务状态（Dev 7：libxposed service 绑定 + 作用域）----
@@ -267,6 +272,7 @@ fun SettingsScreen(
     val threshold by vm.threshold.collectAsState()
     val intercept by vm.interceptMode.collectAsState()
     val excludeRecents by vm.excludeFromRecents.collectAsState()
+    val floatingNavBar by vm.floatingNavBar.collectAsState()
     val filteredCount by vm.filteredCount.collectAsState()
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
@@ -359,6 +365,22 @@ fun SettingsScreen(
                             valueRange = 0.5f..1.0f,
                             steps = 9,
                             onValueChangeFinished = { vm.setThreshold(thresholdDraft) },
+                        )
+                    },
+                ),
+            )
+
+            item { SmallTitle("界面") }
+            groupedCardItems(
+                keyPrefix = "settings_ui",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("floatingNavBar") {
+                        SwitchPreference(
+                            checked = floatingNavBar,
+                            onCheckedChange = { vm.setFloatingNavBar(it) },
+                            title = "悬浮底栏",
+                            summary = "开：悬浮胶囊，内容从底栏后面穿过；关：贴底普通底栏",
                         )
                     },
                 ),

@@ -19,9 +19,15 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -30,9 +36,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
+import io.github.vstory.hook.notifyfilter.ui.component.blur.LocalBlurEnabled
 import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
 import io.github.vstory.hook.notifyfilter.ui.history.HistoryScreen
 import io.github.vstory.hook.notifyfilter.ui.nav.LocalNavigator
@@ -56,8 +65,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarDefaults
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.highlight.Highlight
@@ -343,7 +357,9 @@ fun MainScaffold() {
  */
 @Composable
 private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
-    val bottomBarBackdrop = rememberBlurBackdrop()
+    val floatingNavBar by ServiceLocator.settings.floatingNavBar.collectAsState(initial = true)
+    // 贴底档是不透明底栏，用不到「每帧录一次图层」的开销：不创建也不挂 backdrop
+    val bottomBarBackdrop = rememberBlurBackdrop(enabled = floatingNavBar && LocalBlurEnabled.current)
     val floatingBarColor = if (bottomBarBackdrop != null) {
         Color.Transparent
     } else {
@@ -373,19 +389,26 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
 
     Scaffold(
         bottomBar = {
-            FloatingNavigationBar(
-                modifier = floatingBarModifier,
-                color = floatingBarColor,
-                cornerRadius = floatingPillRadius,
-            ) {
-                tabs.forEachIndexed { index, tab ->
-                    FloatingNavigationBarItem(
-                        selected = mainPagerState.selectedPage == index,
-                        onClick = { mainPagerState.animateToPage(index) },
-                        icon = tab.icon,
-                        label = tab.label,
-                    )
+            if (floatingNavBar) {
+                FloatingNavigationBar(
+                    modifier = floatingBarModifier,
+                    color = floatingBarColor,
+                    cornerRadius = floatingPillRadius,
+                ) {
+                    tabs.forEachIndexed { index, tab ->
+                        LabeledFloatingBarItem(
+                            selected = mainPagerState.selectedPage == index,
+                            onClick = { mainPagerState.animateToPage(index) },
+                            icon = tab.icon,
+                            label = tab.label,
+                        )
+                    }
                 }
+            } else {
+                DockedNavigationBar(
+                    selectedIndex = mainPagerState.selectedPage,
+                    onSelect = { mainPagerState.animateToPage(it) },
+                )
             }
         },
     ) { padding ->
@@ -424,6 +447,79 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
         }
         LaunchedEffect(mainPagerState.pagerState.currentPage) {
             mainPagerState.syncPage()
+        }
+    }
+}
+
+/**
+ * 自建件：库的 FloatingNavigationBarItem **只画图标**，label 仅作 contentDescription，
+ * 胶囊里要「图标 + 文字」只能自己组合；不透明度档位沿用 miuix 的 Defaults。
+ */
+@Composable
+private fun LabeledFloatingBarItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: ImageVector,
+    label: String,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val base = MiuixTheme.colorScheme.onSurfaceContainer
+    val tint = base.copy(
+        alpha = base.alpha * when {
+            isPressed -> if (selected) {
+                NavigationBarDefaults.SelectedPressedAlpha
+            } else {
+                NavigationBarDefaults.UnselectedPressedAlpha
+            }
+
+            selected -> 1f
+            else -> NavigationBarDefaults.UnselectedAlpha
+        },
+    )
+
+    Column(
+        modifier = Modifier
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.Tab,
+                interactionSource = interactionSource,
+                indication = null,
+            )
+            .padding(horizontal = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier
+                .padding(top = 10.dp, bottom = 2.dp)
+                .size(FloatingNavigationBarDefaults.IconSize),
+        )
+        Text(
+            text = label,
+            color = tint,
+            fontSize = NavigationBarDefaults.LabelFontSize,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+    }
+}
+
+/** 贴底普通底栏档：不透明 surface 底色 + 顶部分隔线，作为悬浮毛玻璃的兼容兜底（低端机 / 不要玻璃观感）。 */
+@Composable
+private fun DockedNavigationBar(selectedIndex: Int, onSelect: (Int) -> Unit) {
+    NavigationBar {
+        tabs.forEachIndexed { index, tab ->
+            NavigationBarItem(
+                selected = selectedIndex == index,
+                onClick = { onSelect(index) },
+                icon = tab.icon,
+                label = tab.label,
+            )
         }
     }
 }
