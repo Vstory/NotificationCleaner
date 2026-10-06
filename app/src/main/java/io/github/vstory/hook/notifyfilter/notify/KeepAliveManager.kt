@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import io.github.vstory.hook.notifyfilter.R
 
 /**
  * 保活能力探测与执行（Plan.md §7）：
@@ -106,8 +107,8 @@ class KeepAliveManager(private val context: Context) {
     }
 
     fun manufacturerAutoStartHint(): String? = when (Build.MANUFACTURER.lowercase()) {
-        "xiaomi" -> "小米/HyperOS：设置 → 应用设置 → 应用管理 → 通知净化器 → 自启动"
-        "huawei", "honor" -> "华为/荣耀：设置 → 应用 → 应用启动管理 → 通知净化器 → 允许自启动"
+        "xiaomi" -> "小米/HyperOS：设置 → 应用设置 → 应用管理 → ${context.getString(R.string.app_name)} → 自启动"
+        "huawei", "honor" -> "华为/荣耀：设置 → 应用 → 应用启动管理 → ${context.getString(R.string.app_name)} → 允许自启动"
         "oppo", "realme", "oneplus" -> "OPPO/一加：设置 → 电池 → 更多设置 → 允许完全后台行为"
         "vivo", "iqoo" -> "vivo/iQOO：设置 → 电池 → 后台功耗管理 → 允许后台高耗电"
         "samsung" -> "三星：设置 → 电池 → 后台使用限制 → 移出深度休眠"

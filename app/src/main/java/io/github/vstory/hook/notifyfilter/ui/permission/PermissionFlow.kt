@@ -27,8 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
@@ -175,7 +177,11 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             .padding(16.dp),
     ) {
         Spacer(Modifier.height(16.dp))
-        Text("欢迎使用通知净化器", style = MiuixTheme.textStyles.title2, fontWeight = FontWeight.Bold)
+        Text(
+            "欢迎使用 ${stringResource(R.string.app_name)}",
+            style = MiuixTheme.textStyles.title2,
+            fontWeight = FontWeight.Bold,
+        )
         Spacer(Modifier.height(6.dp))
         Text(
             "首次使用请完成以下权限授权，保证通知过滤与后台保活正常工作。",
