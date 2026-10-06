@@ -494,7 +494,7 @@ jobs:
             # 版本列对 CI 包恒为同一个「版本名(code)」，同一 versionCode 连续构建多次会在页面上完全
             #   同形 ⇒ 「提交」列（短号）把「这行是不是我刚推的那个提交」变成页面可见的信息。
             #   列数与下面的渲染 printf 参数必须同改。
-            echo "| 时间 | 版本 | 变体 | 大小 | 提交 | 下载 |"
+            echo "| 时间 | 版本 | 提交 | 变体 | 大小 | 下载 |"
             echo "|---|---|---|---|---|---|"
           } > "$BODY"
 
@@ -515,8 +515,8 @@ jobs:
               ver=vc;  sub(/\.[^.]*$/, "", ver)
               code=vc; sub(/^.*\./, "", code)
               mark = (name==want1 || name==want2) ? "★ " : ""
-              printf "| %s%s | %s(%s) | %s | %.1f MB | %s | [下载](%s/%s) |\n", \
-                     mark, pretty, ver, code, var, size/1048576, short, base, name
+              printf "| %s%s | %s(%s) | %s | %s | %.1f MB | [下载](%s/%s) |\n", \
+                     mark, pretty, ver, code, short, var, size/1048576, base, name
             }' "$KEEPKEYS" "$SORTED" >> "$BODY"
 
           {
