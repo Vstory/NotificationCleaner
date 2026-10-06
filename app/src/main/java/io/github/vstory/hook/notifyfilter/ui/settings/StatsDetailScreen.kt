@@ -32,6 +32,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_AI
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_RULE
