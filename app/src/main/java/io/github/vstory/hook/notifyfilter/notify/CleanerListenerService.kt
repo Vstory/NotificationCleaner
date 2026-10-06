@@ -18,6 +18,7 @@ import io.github.vstory.hook.notifyfilter.data.db.DECISION_PASSED
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_WHITELIST
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
+import io.github.vstory.hook.notifyfilter.data.db.REASON_GONE
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -203,6 +204,25 @@ class CleanerListenerService : NotificationListenerService() {
             if (activeKeys.isNotEmpty()) {
                 appScope?.launch(Dispatchers.IO) {
                     runCatching { ServiceLocator.db.notificationDao().markPresentVisible(activeKeys) }
+                }
+            }
+            // 反向校正（照通知滤盒 a3/c.a(Z)）：回调停摆窗口内消失的通知收不到 removed 回调，
+            // 只做正向校正会让它们永久卡在「正显示」，这里拿通知栏快照反推。
+            // active == null 是「取快照失败」而非「栏里没有」，必须跳过，否则会把全表误标为已取消
+            if (active != null) {
+                val activeKeySet = activeKeys.toHashSet()
+                appScope?.launch(Dispatchers.IO) {
+                    runCatching {
+                        val dao = ServiceLocator.db.notificationDao()
+                        val gone = dao.listVisibleKeys().filterNot { it in activeKeySet }
+                        if (gone.isNotEmpty()) {
+                            val n = dao.markGoneFromSnapshot(gone, REASON_GONE)
+                            io.github.vstory.hook.notifyfilter.diagnostics.RingLog.log(
+                                io.github.vstory.hook.notifyfilter.diagnostics.LogModules.NLS,
+                                "快照反向校正：$n 条已不在通知栏 → 标记为已取消",
+                            )
+                        }
+                    }
                 }
             }
             active?.forEach { sbn -> dispatch(sbn, fromBackfill = true) }

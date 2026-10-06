@@ -81,3 +81,9 @@ data class NotificationEntity(
  */
 fun contentHashOf(title: String, content: String): Long =
     (title.hashCode().toLong() shl 32) xor (content.hashCode().toLong() and 0xFFFFFFFFL)
+
+/**
+ * 快照反向校正的哨兵 reason（与通知滤盒同值）：栏里已无、但 removed 回调没送到，
+ * 由通知栏快照反推出来的「已取消」。取值避开系统 NLS 的 reason 常量区间。
+ */
+const val REASON_GONE = 0x270F

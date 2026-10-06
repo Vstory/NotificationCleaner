@@ -62,6 +62,23 @@ interface NotificationDao {
     )
     suspend fun markPresentVisible(keys: List<String>)
 
+    /** 快照反向校正用：当前声称「正显示」的 key（拦截类天然排除——其 dismissTime = postTime ≥ 0） */
+    @Query("SELECT `key` FROM notifications WHERE seq = 0 AND dismissTime = -1")
+    suspend fun listVisibleKeys(): List<String>
+
+    /**
+     * 快照反向校正（照通知滤盒 a3/c.a(Z) 的 LD3/o case 10）：通知栏快照里已不存在、
+     * 却仍标着正显示的当前版本 → 标为已取消。回调停摆期间消失的通知收不到 removed，
+     * 只做正向校正会让它们永久卡在「正显示」。
+     * dismissTime 取 postTime + 1 而非 now：批量补记不制造「刚刚取消」的假时间线。
+     * @return 实际更新行数
+     */
+    @Query(
+        "UPDATE notifications SET dismissTime = postTime + 1, dismissReason = :reason " +
+            "WHERE seq = 0 AND dismissTime = -1 AND `key` IN (:keys)",
+    )
+    suspend fun markGoneFromSnapshot(keys: List<String>, reason: Int): Int
+
     /** 应用名回填（1.3.2 P0-5）：仅更新"appName 尚为包名"的行，避免覆盖已解析的历史行 */
     @Query("UPDATE notifications SET appName = :appName WHERE packageName = :pkg AND appName = :pkg")
     suspend fun updateAppName(pkg: String, appName: String)
