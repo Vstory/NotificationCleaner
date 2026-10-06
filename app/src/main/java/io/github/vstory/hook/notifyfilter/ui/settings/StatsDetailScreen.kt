@@ -1,6 +1,8 @@
 package io.github.vstory.hook.notifyfilter.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,6 +38,8 @@ import io.github.vstory.hook.notifyfilter.data.db.DECISION_MANUAL_MARKED_AD
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_PASSED
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
+import io.github.vstory.hook.notifyfilter.ui.component.CardItem
+import io.github.vstory.hook.notifyfilter.ui.component.groupedCardItems
 import io.github.vstory.hook.notifyfilter.ui.history.NotificationDetail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,7 +52,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -276,35 +278,18 @@ fun StatsDetailScreen(
                 Text("暂无记录", style = MiuixTheme.textStyles.headline2)
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(12.dp)) {
-                items(items, key = { it.id }) { n ->
-                    // Dev 14：条目可点击 → 打开与历史页同款的详情弹层（可重新学习/取消学习）
-                    Card(
-                        onClick = { vm.select(n) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    ) {
-                        Column(Modifier.padding(12.dp)) {
-                            Row {
-                                Text(n.appName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text(formatDetailTime(n.postTime), style = MiuixTheme.textStyles.footnote2)
-                                Spacer(Modifier.weight(1f))
-                                val reason = when (n.decision) {
-                                    "FILTERED_BY_AI", "FILTERED_BY_AI_MODULE" -> "AI ${(n.adProbability * 100).toInt()}%"
-                                    "FILTERED_BY_RULE", "FILTERED_BY_RULE_MODULE" -> "规则"
-                                    DECISION_MANUAL_MARKED_AD -> "手动学习"
-                                    else -> ""
-                                }
-                                Text(reason, style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.error)
-                            }
-                            if (n.title.isNotEmpty()) {
-                                Text(n.title, style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            Spacer(Modifier.height(2.dp))
-                            Text(n.content, style = MiuixTheme.textStyles.footnote1, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
+            LazyColumn(
+                Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(bottom = 12.dp),
+            ) {
+                // Dev 14：条目可点击 → 打开与历史页同款的详情弹层（可重新学习/取消学习）
+                groupedCardItems(
+                    keyPrefix = "stats",
+                    outerBottomPadding = 12.dp,
+                    items = items.map { n ->
+                        CardItem(n.id.toString()) { StatsRow(n) { vm.select(n) } }
+                    },
+                )
             }
         }
     }
@@ -323,6 +308,33 @@ fun StatsDetailScreen(
                 onLearn = { label -> vm.learn(n, label) },
                 onUnlearn = { vm.unlearn(n) },
             )
+        }
+    }
+}
+
+/** 明细行内容；卡片底与圆角由 groupedCardItems 的 CardSegment 提供 */
+@Composable
+private fun StatsRow(n: NotificationEntity, onClick: () -> Unit) {
+    Box(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp)) {
+        Column {
+            Row {
+                Text(n.appName, style = MiuixTheme.textStyles.footnote1, color = MiuixTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(formatDetailTime(n.postTime), style = MiuixTheme.textStyles.footnote2)
+                Spacer(Modifier.weight(1f))
+                val reason = when (n.decision) {
+                    "FILTERED_BY_AI", "FILTERED_BY_AI_MODULE" -> "AI ${(n.adProbability * 100).toInt()}%"
+                    "FILTERED_BY_RULE", "FILTERED_BY_RULE_MODULE" -> "规则"
+                    DECISION_MANUAL_MARKED_AD -> "手动学习"
+                    else -> ""
+                }
+                Text(reason, style = MiuixTheme.textStyles.footnote2, color = MiuixTheme.colorScheme.error)
+            }
+            if (n.title.isNotEmpty()) {
+                Text(n.title, style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(n.content, style = MiuixTheme.textStyles.footnote1, maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
     }
 }
