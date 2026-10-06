@@ -149,14 +149,14 @@ internal class FilterEngine {
                 runCatching {
                     refresh(p)
                     refreshModel(api)
-                    android.util.Log.i("NfWatch", "module config hot-updated: rules=${config.rules.size} deltaV=${config.deltaVersion}")
+                    ModuleLogger.i("module config hot-updated: rules=${config.rules.size} deltaV=${config.deltaVersion}")
                 }
             }
             prefs.registerOnSharedPreferenceChangeListener(listener)
         } catch (t: Throwable) {
             // daemon 尚未就绪时读不到 prefs：不重试就会永久停在默认配置上
             // （热更新也依赖这次注册成功，注册不上等于整条同步链在模块端断了）
-            android.util.Log.w("NfWatch", "module remote prefs unavailable (attempt $attempt): $t")
+            ModuleLogger.e("module remote prefs unavailable (attempt $attempt)", t)
             if (attempt < ATTACH_RETRY_MAX) {
                 val delay = ATTACH_RETRY_DELAYS_MS[attempt.coerceIn(0, ATTACH_RETRY_DELAYS_MS.lastIndex)]
                 retryExecutor.execute {
@@ -171,7 +171,7 @@ internal class FilterEngine {
         val raw = prefs.getString(ModuleConfigCodec.KEY_CONFIG, null)
         if (raw == null) {
             // 空值会静默退化成默认配置：链路断掉时全靠这条日志留线索
-            android.util.Log.w("NfWatch", "module config missing: APP 未推送过配置，模块端用默认值")
+            ModuleLogger.e("module config missing: APP 未推送过配置，模块端用默认值")
         }
         val next = ModuleConfigCodec.decode(raw)
         config = next
@@ -210,7 +210,7 @@ internal class FilterEngine {
                 runCatching {
                     val pfd = api.openRemoteFile(ModuleConfigCodec.DELTA_REMOTE_FILE)
                     if (pfd == null) {
-                        android.util.Log.w("NfWatch", "module delta file unavailable (v$version)")
+                        ModuleLogger.e("module delta file unavailable (v$version)")
                     } else {
                         pfd.use {
                             val delta = SpamDelta.decode(
@@ -219,14 +219,13 @@ internal class FilterEngine {
                             if (!delta.isEmpty) {
                                 next = base.withDelta(delta)
                                 deltaApplied = true
-                                android.util.Log.i(
-                                    "NfWatch",
+                                ModuleLogger.i(
                                     "module delta v$version loaded: ${delta.indices.size} weights",
                                 )
                             }
                         }
                     }
-                }.onFailure { android.util.Log.w("NfWatch", "module delta load failed: $it") }
+                }.onFailure { ModuleLogger.e("module delta load failed", it) }
             }
             model = next
             if (version == 0L || deltaApplied) {
@@ -236,13 +235,13 @@ internal class FilterEngine {
                 // 关键：不登记版本号，保证重试仍会触发；重试以**当前**版本号为准
                 //（等待期间用户可能又学了一条）
                 val delay = DELTA_RETRY_DELAYS_MS[attempt.coerceIn(0, DELTA_RETRY_DELAYS_MS.lastIndex)]
-                android.util.Log.w("NfWatch", "module delta v$version not applied, retry in ${delay}ms")
+                ModuleLogger.i("module delta v$version not applied, retry in ${delay}ms")
                 Thread.sleep(delay)
                 rebuildModel(api, config.deltaVersion, attempt + 1)
             } else {
-                android.util.Log.w("NfWatch", "module delta v$version gave up after $DELTA_RETRY_MAX retries")
+                ModuleLogger.e("module delta v$version gave up after $DELTA_RETRY_MAX retries")
             }
-        }.onFailure { android.util.Log.w("NfWatch", "module model rebuild failed: $it") }
+        }.onFailure { ModuleLogger.e("module model rebuild failed", it) }
     }
 
     /** base 模型只加载一次；加载失败置负极标记，避免每次学习事件都重试 0.5MB IO。 */
@@ -253,7 +252,7 @@ internal class FilterEngine {
             SpamModel::class.java.classLoader
                 ?.getResourceAsStream(MODEL_RESOURCE)?.use { SpamModel.load(it) }
         }.onFailure {
-            android.util.Log.w("NfWatch", "module base model load failed: $it")
+            ModuleLogger.e("module base model load failed", it)
         }.getOrNull()
         if (base == null) baseLoadFailed = true else cachedBase = base
         return base

@@ -7,6 +7,7 @@ import io.github.libxposed.api.XposedModuleInterface
 import io.github.libxposed.api.XposedModuleInterface.SystemServerStartingParam
 import io.github.vstory.hook.notifyfilter.keepalive.FilterEngine
 import io.github.vstory.hook.notifyfilter.keepalive.ModuleLogSink
+import io.github.vstory.hook.notifyfilter.keepalive.ModuleLogger
 import io.github.vstory.hook.notifyfilter.provider.ModuleLogProvider
 import java.lang.reflect.Method
 
@@ -25,7 +26,8 @@ import java.lang.reflect.Method
 class MainHook : XposedModule() {
 
     override fun onModuleLoaded(param: XposedModuleInterface.ModuleLoadedParam) {
-        log(Log.INFO, TAG, "api102 module loaded in ${param.processName} (isSystemServer=${param.isSystemServer()})")
+        ModuleLogger.attach(this)
+        ModuleLogger.i("api102 module loaded in ${param.processName} (isSystemServer=${param.isSystemServer()})")
     }
 
     override fun onSystemServerStarting(param: SystemServerStartingParam) {
@@ -56,6 +58,8 @@ class MainHook : XposedModule() {
      * SKIP = 类/方法在该 ROM 上不存在（跨版本正常）；FAIL = hook 抛异常（需要修）。
      */
     private fun installHooks(classLoader: ClassLoader) {
+        // 热重载换 ClassLoader 会重建 ModuleLogger（api 复位），故每次装配都重新注入
+        ModuleLogger.attach(this)
         sHandles.forEach { runCatching { it.unhook() } }
         sHandles.clear()
         sHookOk = 0
@@ -67,7 +71,7 @@ class MainHook : XposedModule() {
         hookActiveServices(classLoader)
         hookNotificationManagerService(classLoader)
 
-        log(Log.INFO, TAG, "installHooks done: $sHookOk OK / $sHookSkip SKIP / $sHookFail FAIL /$sHookDetail")
+        ModuleLogger.i("installHooks done: $sHookOk OK / $sHookSkip SKIP / $sHookFail FAIL /$sHookDetail")
     }
 
     private fun ok(desc: String, handle: XposedInterface.HookHandle) {
@@ -93,7 +97,7 @@ class MainHook : XposedModule() {
             skip(AS_CLASS, it)
             return
         }
-        val hooker = BlockStopHooker(this)
+        val hooker = BlockStopHooker()
         for (m in asClass.declaredMethods) {
             if (m.name !in HOOK_METHODS) continue
             runCatching { hook(m).setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE).intercept(hooker) }
@@ -111,12 +115,12 @@ class MainHook : XposedModule() {
      * 拿 null 去填 primitive 槽位是未定义行为（取决于 lsplant/libxposed 实现，
      * 极可能在 **system_server 内** NPE/转型崩溃）。阻断值一律走 [blockedResult]。
      */
-    private class BlockStopHooker(private val xposed: XposedInterface) : XposedInterface.Hooker {
+    private class BlockStopHooker : XposedInterface.Hooker {
 
         override fun intercept(chain: XposedInterface.Chain): Any? {
             val isTarget = chain.getArgs().any { arg -> arg != null && packageNameOf(arg) == TARGET }
             if (!isTarget) return chain.proceed()
-            xposed.log(Log.INFO, TAG, "blocked service stop attempt")
+            ModuleLogger.i("blocked service stop attempt")
             return blockedResult(chain.executable as? Method)
         }
 
@@ -206,9 +210,9 @@ class MainHook : XposedModule() {
                             put(ModuleLogProvider.COL_KEY, "lsp:heartbeat")
                         }
                         sink.submit(ctx, hb)
-                        Log.i(TAG, "LSP heartbeat submitted (first NMS enqueue)")
+                        ModuleLogger.i("LSP heartbeat submitted (first NMS enqueue)")
                     }
-                }.onFailure { Log.w(TAG, "heartbeat submit failed: $it") }
+                }.onFailure { ModuleLogger.e("heartbeat submit failed", it) }
             }
             val args = chain.args
             val notification = args.firstOrNull { it is android.app.Notification } as? android.app.Notification
@@ -222,12 +226,12 @@ class MainHook : XposedModule() {
             val outcome = try {
                 engine.decide(pkg.orEmpty(), notification)
             } catch (t: Throwable) {
-                Log.w(TAG, "module decide failed: $t")
+                ModuleLogger.e("module decide failed", t)
                 null
             }
             if (outcome == null || !outcome.block) return chain.proceed()
 
-            Log.i(TAG, "enqueue blocked: ${outcome.decision} p=${outcome.probability} ${pkg.orEmpty()}")
+            ModuleLogger.i("enqueue blocked: ${outcome.decision} p=${outcome.probability} ${pkg.orEmpty()}")
             val postTime = System.currentTimeMillis()
             val values = android.content.ContentValues().apply {
                 put("package", pkg.orEmpty())
@@ -260,14 +264,13 @@ class MainHook : XposedModule() {
     private fun dbg(msg: String) {
         // #ifdef DEBUG
         if (BuildConfig.DEBUG) {
-            log(Log.DEBUG, TAG, msg)
-            Log.d(TAG, msg)
+            log(Log.DEBUG, ModuleLogger.TAG, msg)
+            Log.d(ModuleLogger.TAG, msg)
         }
         // #endif
     }
 
     companion object {
-        private const val TAG = "NotifyFilter"
         private val TARGET = BuildConfig.APPLICATION_ID
         private const val AS_CLASS = "com.android.server.am.ActiveServices"
         private const val NMS_CLASS = "com.android.server.notification.NotificationManagerService"
