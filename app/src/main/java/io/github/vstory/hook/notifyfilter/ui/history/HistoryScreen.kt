@@ -91,7 +91,7 @@ import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
@@ -264,7 +264,7 @@ fun HistoryScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
         ) {
-            TabRow(
+            TabRowWithContour(
                 tabs = listOf("正显示", "已取消", "历史"),
                 selectedTabIndex = HistoryTab.entries.indexOf(tab),
                 onTabSelected = { vm.setTab(HistoryTab.entries[it]) },
