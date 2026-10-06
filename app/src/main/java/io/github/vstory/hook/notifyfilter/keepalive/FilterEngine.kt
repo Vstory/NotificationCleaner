@@ -135,7 +135,7 @@ internal class FilterEngine {
 
     // ---- 配置与模型加载（attach 由 MainHook 调用；热重载复用时同一实例会再次 attach） ----
 
-    fun attach(newApi: io.github.libxposed.api.XposedInterface) {
+    fun attach(newApi: io.github.libxposed.api.XposedInterface, attempt: Int = 0) {
         api = newApi
         try {
             val prefs = newApi.getRemotePreferences(ModuleConfigCodec.PREFS_NAME)
@@ -154,12 +154,26 @@ internal class FilterEngine {
             }
             prefs.registerOnSharedPreferenceChangeListener(listener)
         } catch (t: Throwable) {
-            android.util.Log.w("NfWatch", "module remote prefs unavailable: $t")
+            // daemon 尚未就绪时读不到 prefs：不重试就会永久停在默认配置上
+            // （热更新也依赖这次注册成功，注册不上等于整条同步链在模块端断了）
+            android.util.Log.w("NfWatch", "module remote prefs unavailable (attempt $attempt): $t")
+            if (attempt < ATTACH_RETRY_MAX) {
+                val delay = ATTACH_RETRY_DELAYS_MS[attempt.coerceIn(0, ATTACH_RETRY_DELAYS_MS.lastIndex)]
+                retryExecutor.execute {
+                    Thread.sleep(delay)
+                    attach(newApi, attempt + 1)
+                }
+            }
         }
     }
 
     private fun refresh(prefs: android.content.SharedPreferences) {
-        val next = ModuleConfigCodec.decode(prefs.getString(ModuleConfigCodec.KEY_CONFIG, null))
+        val raw = prefs.getString(ModuleConfigCodec.KEY_CONFIG, null)
+        if (raw == null) {
+            // 空值会静默退化成默认配置：链路断掉时全靠这条日志留线索
+            android.util.Log.w("NfWatch", "module config missing: APP 未推送过配置，模块端用默认值")
+        }
+        val next = ModuleConfigCodec.decode(raw)
         config = next
         compiledRules = next.rules.map { r ->
             val set = RuleConditionSet(
@@ -289,6 +303,10 @@ internal class FilterEngine {
         private const val DELTA_RETRY_MAX = 3
         private val DELTA_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L, 8_000L)
 
+        /** remote prefs 读取/注册失败时的退避重试（1s / 3s / 10s） */
+        private const val ATTACH_RETRY_MAX = 3
+        private val ATTACH_RETRY_DELAYS_MS = longArrayOf(1_000L, 3_000L, 10_000L)
+
         // P0-3：base 模型进程级缓存（system_server 内 class/model 唯一，缓存安全）
         @Volatile private var cachedBase: SpamModel? = null
         @Volatile private var baseLoadFailed = false
@@ -297,5 +315,10 @@ internal class FilterEngine {
     /** P0-3：模型重建专用单线程（串行化重建，避免与 decide() 的并发读互相干扰） */
     private val rebuildExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
         Thread(r, "NfWatch-ModelRebuild").apply { isDaemon = true }
+    }
+
+    /** attach 重试专用单线程：不与模型重建排队（重试里的 sleep 会拖住重建） */
+    private val retryExecutor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "NfWatch-PrefsRetry").apply { isDaemon = true }
     }
 }

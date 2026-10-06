@@ -6,9 +6,11 @@ import kotlinx.serialization.json.Json
 
 /**
  * APP → LSPosed 模块（system_server）的过滤配置快照（1.2.1）。
- * 经 libxposed remote preferences 跨进程推送：APP 侧写自身 SharedPreferences
- * （文件名 [PREFS_NAME]，libxposed service 将其映射为模块远程偏好），
- * 模块侧 XposedInterface.getRemotePreferences 同名读取并监听变更热更新。
+ * 跨进程走 libxposed remote preferences：[PREFS_NAME] 是 group 名，两侧同名，
+ * APP 侧必须经 `XposedService.getRemotePreferences(PREFS_NAME)` 写入（框架 daemon 侧存储），
+ * 模块侧 `XposedInterface.getRemotePreferences` 读取并监听变更热更新。
+ * ⚠️ 写模块自己的 `getSharedPreferences(PREFS_NAME)` 不参与这条链（不同存储）——
+ * 详见知识库 跨进程配置链路修复.md。
  * 模型学习修正（delta）不经 prefs——经 openRemoteFile("spam_delta.bin") 传二进制，
  * 此处仅携带版本号触发模块重载。
  */
@@ -51,7 +53,6 @@ object ModuleConfigCodec {
 
     const val PREFS_NAME = "noticleaner_config"
     const val KEY_CONFIG = "config"
-    const val KEY_DELTA_VERSION = "delta_version"
     const val DELTA_REMOTE_FILE = "spam_delta.bin"
     const val ACTION_FLUSH_LOGS = "io.github.vstory.hook.notifyfilter.FLUSH_MODULE_LOGS"
 

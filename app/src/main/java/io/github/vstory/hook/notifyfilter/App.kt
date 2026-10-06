@@ -107,7 +107,7 @@ object ServiceLocator {
         modelRepo = ModelRepository(app)
         ruleEngine = RuleEngine(db.ruleDao(), db.whitelistDao())
         keepAlive = KeepAliveManager(app)
-        moduleSync = ModuleConfigSync(app, db.ruleDao(), db.whitelistDao())
+        moduleSync = ModuleConfigSync(db.ruleDao(), db.whitelistDao())
         moduleSync.start(appScope)
         CleanerListenerService.initScope(app)
     }
