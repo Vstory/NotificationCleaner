@@ -38,7 +38,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** 可检测的权限状态快照（1.1.8） */
@@ -276,6 +276,8 @@ private fun PermissionCard(
 /**
  * 每次进入应用时的权限失效提醒（1.1.8）：
  * 列出已失效的可检测权限，点击跳转对应页面重新授权。
+ *
+ * 用 Window 变体而非 Overlay：调用点在 MainScaffold 之外（见 UpdatePromptDialog 的同类说明）。
  */
 @Composable
 fun PermissionLostDialog(
@@ -286,7 +288,7 @@ fun PermissionLostDialog(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    OverlayDialog(
+    WindowDialog(
         show = true,
         title = "权限已失效",
         onDismissRequest = onDismiss,

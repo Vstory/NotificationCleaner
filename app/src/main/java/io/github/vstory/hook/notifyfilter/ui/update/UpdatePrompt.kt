@@ -20,7 +20,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.window.WindowDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -29,12 +29,15 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * - Downloading：显示进度，可取消
  * - ReadyToInstall：安装
  * - Checking/UpToDate/Error：不显示任何提示（静默）
+ *
+ * 用 Window 变体而非 Overlay：本组件挂在 MainScaffold 之外，而 Overlay 变体要求调用点落在
+ * 某个 Scaffold 的 popup 宿主作用域内，否则注册进无人渲染的状态表、弹窗静默不出现。
  */
 @Composable
 fun UpdatePromptDialog(vm: UpdateViewModel, onDismiss: () -> Unit) {
     val state by vm.state.collectAsState()
     when (val s = state) {
-        is UpdateState.Available -> OverlayDialog(
+        is UpdateState.Available -> WindowDialog(
             title = "发现新版本 v${s.release.versionName}",
             show = true,
             onDismissRequest = { vm.reset(); onDismiss() },
@@ -61,7 +64,7 @@ fun UpdatePromptDialog(vm: UpdateViewModel, onDismiss: () -> Unit) {
             )
         }
 
-        is UpdateState.Downloading -> OverlayDialog(
+        is UpdateState.Downloading -> WindowDialog(
             title = "正在下载更新",
             show = true,
             onDismissRequest = { vm.cancelDownload(); vm.reset(); onDismiss() },
@@ -81,7 +84,7 @@ fun UpdatePromptDialog(vm: UpdateViewModel, onDismiss: () -> Unit) {
             }
         }
 
-        is UpdateState.ReadyToInstall -> OverlayDialog(
+        is UpdateState.ReadyToInstall -> WindowDialog(
             title = "更新包已就绪",
             show = true,
             onDismissRequest = { vm.reset(); onDismiss() },
