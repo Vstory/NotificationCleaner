@@ -1,6 +1,7 @@
 package io.github.vstory.hook.notifyfilter.ui.history
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,8 +50,10 @@ import io.github.vstory.hook.notifyfilter.data.db.DECISION_ONGOING
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_WHITELIST
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveManager
+import io.github.vstory.hook.notifyfilter.ui.component.CardItem
 import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
 import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
+import io.github.vstory.hook.notifyfilter.ui.component.groupedCardItems
 import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession
 import java.time.Instant
 import java.time.LocalDate
@@ -62,16 +64,17 @@ import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SearchBar
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
@@ -124,6 +127,14 @@ fun HistoryScreen(
         }
     }
 
+    // 从选 App 页返回后本组合重建，LaunchedEffect 重跑并回读选择器结果
+    LaunchedEffect(Unit) {
+        AppPickerSession.result?.let { result ->
+            vm.setAdvancedFilter(vm.advancedFilter.value.copy(apps = result))
+            AppPickerSession.result = null
+        }
+    }
+
     val scrollBehavior = MiuixScrollBehavior()
     val backdrop = rememberBlurBackdrop()
     val blurActive = backdrop != null
@@ -161,23 +172,42 @@ fun HistoryScreen(
                 )
             }
             var advOpen by remember { mutableStateOf(false) }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            var searchExpanded by remember { mutableStateOf(false) }
+            val adv by vm.advancedFilter.collectAsState()
+            val advCount = advancedActiveCount(adv)
+            SearchBar(
+                inputField = {
+                    InputField(
+                        query = search,
+                        onQueryChange = { vm.search.value = it },
+                        onSearch = {},
+                        expanded = searchExpanded,
+                        onExpandedChange = { searchExpanded = it },
+                        label = "搜索 App / 标题 / 内容",
+                    )
+                },
+                expanded = searchExpanded,
+                onExpandedChange = { searchExpanded = it },
+                outsideEndAction = {
+                    TextButton(text = "取消", onClick = { searchExpanded = false })
+                },
+                content = {},
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Card(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(top = 6.dp),
             ) {
-                TextField(
-                    value = search,
-                    onValueChange = { vm.search.value = it },
-                    label = "搜索 App / 标题 / 内容",
-                    useLabelAsPlaceholder = true,
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
+                ArrowPreference(
+                    title = "筛选",
+                    summary = if (advCount == 0) "全部通知" else "已设置 $advCount 个条件",
+                    onClick = { advOpen = !advOpen },
                 )
-                AdvancedFilterButton(vm, onOpenAppPicker, advOpen) { advOpen = !advOpen }
-            }
-            if (advOpen) {
-                AdvancedFilterPanel(vm, onOpenAppPicker)
+                if (advOpen) {
+                    AdvancedFilterRows(vm, onOpenAppPicker)
+                }
             }
             Spacer(Modifier.height(4.dp))
             if (list.isEmpty()) {
@@ -193,18 +223,22 @@ fun HistoryScreen(
                     }
                 }
             } else {
+                // 列表已按时间倒序 → LinkedHashMap 保序，每个日期一组，一组拼一张连续卡
+                val byDay = remember(list) { list.groupBy { dayOf(it.postTime) } }
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp),
                 ) {
-                    // Dev 6：日期分组头——列表从新到旧，相邻两条日期不同时插入"9月25日"分隔
-                    itemsIndexed(list, key = { _, n -> n.id }) { i, n ->
-                        val day = dayOf(n.postTime)
-                        if (i == 0 || dayOf(list[i - 1].postTime) != day) {
-                            DateHeader(day)
-                        }
-                        NotificationCard(n) { vm.select(n) }
+                    byDay.forEach { (day, items) ->
+                        item(key = "day:$day") { SmallTitle(dayFmt.format(day)) }
+                        groupedCardItems(
+                            keyPrefix = "day:$day",
+                            outerBottomPadding = 12.dp,
+                            items = items.map { n ->
+                                CardItem(n.id.toString()) { NotificationRow(n) { vm.select(n) } }
+                            },
+                        )
                     }
                 }
             }
@@ -324,12 +358,14 @@ private fun renderAppIcon(
 }.getOrNull()
 
 @Composable
-private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+private fun NotificationRow(n: NotificationEntity, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
     ) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             AppIcon(n.packageName, 40, fallbackText = n.appName)
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -380,11 +416,7 @@ private fun NotificationCard(n: NotificationEntity, onClick: () -> Unit) {
     }
 }
 
-/**
- * 高级筛选（Dev 6）：搜索框右侧的"筛选"按钮 + 展开面板。
- * App 选择复用规则页的 AppPickerScreen（全量应用列表，含系统应用），
- * 结果经 AppPickerSession 单例回读（与 RuleEditScreen 同款机制）。
- */
+/** 生效中的筛选条件数：驱动入口行摘要与「清除筛选条件」行的显隐 */
 private fun advancedActiveCount(adv: HistoryAdvancedFilter): Int {
     var c = 0
     if (adv.apps.isNotEmpty()) c++
@@ -394,68 +426,42 @@ private fun advancedActiveCount(adv: HistoryAdvancedFilter): Int {
     return c
 }
 
+/**
+ * 筛选条件行（Dev 6）：与入口行同卡展开。
+ * App 选择复用规则页 AppPickerScreen（含系统应用），结果经 AppPickerSession 回读。
+ */
 @Composable
-private fun AdvancedFilterButton(
-    vm: HistoryViewModel,
-    onOpenAppPicker: () -> Unit,
-    open: Boolean,
-    onToggle: () -> Unit,
-) {
+private fun AdvancedFilterRows(vm: HistoryViewModel, onOpenAppPicker: () -> Unit) {
     val adv by vm.advancedFilter.collectAsState()
-    // 进入历史页时回读选择器结果（从 AppPicker 返回后本组合重建，LaunchedEffect 重跑）
-    LaunchedEffect(Unit) {
-        AppPickerSession.result?.let { result ->
-            vm.setAdvancedFilter(vm.advancedFilter.value.copy(apps = result))
-            AppPickerSession.result = null
-        }
-    }
-    val active = advancedActiveCount(adv)
-    Button(
-        onClick = onToggle,
-        colors = if (active > 0) ButtonDefaults.buttonColorsPrimary() else ButtonDefaults.buttonColors(),
-    ) {
-        Text(if (active > 0) "筛选($active)" else "筛选", style = MiuixTheme.textStyles.button)
-    }
-}
-
-@Composable
-private fun AdvancedFilterPanel(vm: HistoryViewModel, onOpenAppPicker: () -> Unit) {
-    val adv by vm.advancedFilter.collectAsState()
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-        Spacer(Modifier.height(6.dp))
-        Card(Modifier.fillMaxWidth()) {
-            ArrowPreference(
-                title = "应用",
-                summary = if (adv.apps.isEmpty()) "全部 App" else "已选 ${adv.apps.size} 个",
-                // 复用规则页 AppPicker（含系统应用），结果经 AppPickerSession 回读
-                onClick = {
-                    AppPickerSession.initial = adv.apps
-                    onOpenAppPicker()
-                },
-            )
-            SwitchPreference(
-                checked = adv.learnedOnly,
-                onCheckedChange = { vm.setAdvancedFilter(adv.copy(learnedOnly = it)) },
-                title = "只看已学习",
-            )
-            DateField(
-                label = "开始时间",
-                value = adv.startDate,
-                onUpdate = { vm.setAdvancedFilter(adv.copy(startDate = it)) },
-            )
-            DateField(
-                label = "结束时间",
-                value = adv.endDate,
-                onUpdate = { vm.setAdvancedFilter(adv.copy(endDate = it)) },
-            )
-            if (advancedActiveCount(adv) > 0) {
-                ArrowPreference(
-                    title = "清除筛选条件",
-                    onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) },
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
+    ArrowPreference(
+        title = "应用",
+        summary = if (adv.apps.isEmpty()) "全部 App" else "已选 ${adv.apps.size} 个",
+        // 复用规则页 AppPicker（含系统应用），结果经 AppPickerSession 回读
+        onClick = {
+            AppPickerSession.initial = adv.apps
+            onOpenAppPicker()
+        },
+    )
+    SwitchPreference(
+        checked = adv.learnedOnly,
+        onCheckedChange = { vm.setAdvancedFilter(adv.copy(learnedOnly = it)) },
+        title = "只看已学习",
+    )
+    DateField(
+        label = "开始时间",
+        value = adv.startDate,
+        onUpdate = { vm.setAdvancedFilter(adv.copy(startDate = it)) },
+    )
+    DateField(
+        label = "结束时间",
+        value = adv.endDate,
+        onUpdate = { vm.setAdvancedFilter(adv.copy(endDate = it)) },
+    )
+    if (advancedActiveCount(adv) > 0) {
+        ArrowPreference(
+            title = "清除筛选条件",
+            onClick = { vm.setAdvancedFilter(HistoryAdvancedFilter()) },
+        )
     }
 }
 
@@ -527,23 +533,6 @@ private fun DateField(label: String, value: LocalDate?, onUpdate: (LocalDate?) -
     }
 }
 
-@Composable
-private fun DateHeader(day: LocalDate) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        HorizontalDivider(Modifier.weight(1f))
-        Text(
-            dayFmt.format(day),
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.outline,
-        )
-        HorizontalDivider(Modifier.weight(1f))
-    }
-}
-
 /**
  * 通知详情弹层内容（internal：Dev 14 起统计明细页点击条目也复用它，
  * 学习/取消学习交互与历史页完全一致）。
@@ -573,11 +562,8 @@ internal fun NotificationDetail(
         Text("AI 判定：广告概率 ${(n.adProbability * 100).toInt()}%", style = MiuixTheme.textStyles.footnote1)
 
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onJumpChannel, modifier = Modifier.fillMaxWidth()) {
-            Text("跳转到该通道设置", style = MiuixTheme.textStyles.button)
-        }
-        Spacer(Modifier.height(8.dp))
         // 1.1.11：已学习的通知也允许再次点击学习（同方向重复点击累积权重）；随时可取消学习
+        // 学习方向是一次标注选择、两者无主次 → 同用 primary；默认灰底在浅色下与卡片几乎同色
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val adText = when {
                 n.learned && n.learnLabel == 1 -> "再学一次广告(${n.learnCount + 1})"
@@ -587,16 +573,30 @@ internal fun NotificationDetail(
                 n.learned && n.learnLabel == 0 -> "再学一次正常(${n.learnCount + 1})"
                 else -> "正常通知"
             }
-            Button(onClick = { onLearn(1) }, modifier = Modifier.weight(1f)) {
-                Text(adText, style = MiuixTheme.textStyles.button)
-            }
-            Button(onClick = { onLearn(0) }, modifier = Modifier.weight(1f)) {
-                Text(normalText, style = MiuixTheme.textStyles.button)
-            }
+            Button(
+                onClick = { onLearn(1) },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) { Text(adText, style = MiuixTheme.textStyles.button) }
+            Button(
+                onClick = { onLearn(0) },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) { Text(normalText, style = MiuixTheme.textStyles.button) }
         }
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            text = "跳转到该通道设置",
+            onClick = onJumpChannel,
+            modifier = Modifier.fillMaxWidth(),
+        )
         if (n.learned) {
             Spacer(Modifier.height(8.dp))
-            Button(onClick = onUnlearn) { Text("取消学习", style = MiuixTheme.textStyles.button) }
+            TextButton(
+                text = "取消学习",
+                onClick = onUnlearn,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         Spacer(Modifier.height(24.dp))
     }
