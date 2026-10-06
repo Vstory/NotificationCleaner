@@ -165,7 +165,7 @@ fun RulesScreen(
                 .fillMaxSize()
                 .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
+                .padding(top = padding.calculateTopPadding()),
         ) {
             TabRowWithContour(
                 tabs = listOf("过滤规则 (${rules.size})", "白名单 (${whitelist.size})"),
@@ -175,11 +175,11 @@ fun RulesScreen(
             when (tab) {
                 0 -> {
                     if (rules.isEmpty()) {
-                        EmptyHint("暂无手动规则", "点击右下角 + 新建：选择 APP + 条件组合（8 种匹配方式）")
+                        EmptyHint("暂无手动规则", "点击右下角 + 新建：选择 APP + 条件组合（8 种匹配方式）", bottomPadding)
                     } else {
                         LazyColumn(
                             Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 12.dp),
+                            contentPadding = PaddingValues(bottom = 12.dp + bottomPadding),
                         ) {
                             groupedCardItems(
                                 keyPrefix = "rules",
@@ -205,11 +205,11 @@ fun RulesScreen(
                 }
                 else -> {
                     if (whitelist.isEmpty()) {
-                        EmptyHint("白名单为空", "白名单内的 APP 通知不会被 AI 过滤；点击右下角 + 添加")
+                        EmptyHint("白名单为空", "白名单内的 APP 通知不会被 AI 过滤；点击右下角 + 添加", bottomPadding)
                     } else {
                         LazyColumn(
                             Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 12.dp),
+                            contentPadding = PaddingValues(bottom = 12.dp + bottomPadding),
                         ) {
                             groupedCardItems(
                                 keyPrefix = "whitelist",
@@ -257,9 +257,11 @@ private fun ruleSummaryText(rule: RuleEntity, hitCount: Int): String {
 }
 
 @Composable
-private fun EmptyHint(title: String, subtitle: String) {
+private fun EmptyHint(title: String, subtitle: String, bottomPadding: Dp = 0.dp) {
     Column(
-        Modifier.fillMaxSize(),
+        Modifier
+            .fillMaxSize()
+            .padding(bottom = bottomPadding),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

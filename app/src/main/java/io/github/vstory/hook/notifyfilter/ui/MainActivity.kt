@@ -22,7 +22,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -37,7 +39,6 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
@@ -394,6 +395,7 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (floatingNavBar) {
                 FloatingNavigationBar(
@@ -486,6 +488,7 @@ private fun LabeledFloatingBarItem(
 
     Column(
         modifier = Modifier
+            .defaultMinSize(minWidth = 56.dp, minHeight = 48.dp)
             .selectable(
                 selected = selected,
                 onClick = onClick,
@@ -493,24 +496,21 @@ private fun LabeledFloatingBarItem(
                 interactionSource = interactionSource,
                 indication = null,
             )
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
             tint = tint,
-            modifier = Modifier
-                .padding(top = 10.dp, bottom = 2.dp)
-                .size(FloatingNavigationBarDefaults.IconSize),
+            modifier = Modifier.size(FloatingNavigationBarDefaults.IconSize),
         )
         Text(
             text = label,
             color = tint,
             fontSize = NavigationBarDefaults.LabelFontSize,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
             maxLines = 1,
-            modifier = Modifier.padding(bottom = 8.dp),
         )
     }
 }

@@ -246,7 +246,7 @@ fun HistoryScreen(
                 .fillMaxSize()
                 .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
+                .padding(top = padding.calculateTopPadding()),
         ) {
             // 搜索条与 Tab 行互斥占同一行：搜索展开即接管该行（官方 MainPage 的让位语义），
             // 三态选择在搜索模式下无意义——搜索范围已是全部三态
@@ -292,7 +292,9 @@ fun HistoryScreen(
             }
             if (list.isEmpty()) {
                 Column(
-                    Modifier.fillMaxSize(),
+                    Modifier
+                        .fillMaxSize()
+                        .padding(bottom = bottomPadding),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -317,7 +319,7 @@ fun HistoryScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 12.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp + bottomPadding),
                 ) {
                     HistoryTab.entries.forEach { st ->
                         val items = byState[st] ?: return@forEach
@@ -337,7 +339,7 @@ fun HistoryScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 12.dp),
+                    contentPadding = PaddingValues(bottom = 12.dp + bottomPadding),
                 ) {
                     byDay.forEach { (day, items) ->
                         item(key = "day:$day") { SmallTitle(dayFmt.format(day)) }
