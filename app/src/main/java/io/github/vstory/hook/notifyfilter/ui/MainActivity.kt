@@ -64,8 +64,8 @@ import top.yukonga.miuix.kmp.blur.highlight.Highlight
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.ListView
-import top.yukonga.miuix.kmp.icon.extended.Recent
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
@@ -254,7 +254,7 @@ class MainActivity : ComponentActivity() {
 private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("历史", MiuixIcons.Recent),
+    Tab("主页", MiuixIcons.Home),
     Tab("规则", MiuixIcons.ListView),
     Tab("设置", MiuixIcons.Settings),
 )

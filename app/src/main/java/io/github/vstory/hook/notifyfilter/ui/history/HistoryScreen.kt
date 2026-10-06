@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_CONVERSATION
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_FILTERED_BY_AI
@@ -223,7 +225,7 @@ fun HistoryScreen(
                     )
                 } else {
                     TopAppBar(
-                        title = "历史",
+                        title = stringResource(R.string.app_name),
                         color = barColor,
                         scrollBehavior = scrollBehavior,
                         actions = {
