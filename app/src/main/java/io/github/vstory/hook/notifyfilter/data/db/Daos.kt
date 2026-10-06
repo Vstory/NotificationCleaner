@@ -99,9 +99,24 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE seq > 0 ORDER BY postTime DESC LIMIT 500")
     fun listHistory(): Flow<List<NotificationEntity>>
 
-    /** 三态并集（搜索模式）：可见/已取消/历史互斥且完备，无 WHERE 即全表此刻的最新视图 */
+    /**
+     * 三态并集（搜索模式 + 空词，纯浏览）：可见/已取消/历史互斥且完备，无 WHERE 即全表此刻的最新视图。
+     * 有搜索词时不走这里——关键词下推 SQL，候选集不能再被最近 500 行吃掉（见 [searchAllStates]）。
+     */
     @Query("SELECT * FROM notifications ORDER BY postTime DESC LIMIT 500")
     fun listAllStates(): Flow<List<NotificationEntity>>
+
+    /**
+     * 搜索（三态并集内）：关键词下推 SQL——此处的 LIMIT 是**结果条数上限**，不是时间窗口，
+     * 候选集不会再被全表最近 500 行吃掉。pattern 由调用方转义 % _ \ 后加两侧 %。
+     * 依赖 postTime 索引做「按序取行 → 凑够 LIMIT 即停」，缺它则退化为全表扫描 + 临时排序。
+     */
+    @Query(
+        "SELECT * FROM notifications WHERE title LIKE :pattern ESCAPE '\\' " +
+            "OR content LIKE :pattern ESCAPE '\\' OR appName LIKE :pattern ESCAPE '\\' " +
+            "OR packageName LIKE :pattern ESCAPE '\\' ORDER BY postTime DESC LIMIT 500",
+    )
+    fun searchAllStates(pattern: String): Flow<List<NotificationEntity>>
 
     @Query("SELECT * FROM notifications WHERE learned = 1 ORDER BY postTime DESC LIMIT 500")
     fun listLearned(): Flow<List<NotificationEntity>>

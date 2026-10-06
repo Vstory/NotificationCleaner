@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [NotificationEntity::class, RuleEntity::class, WhitelistEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,7 +25,10 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "notification_cleaner.db",
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(
+                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
+                    MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+                )
                 .build()
                 .also { instance = it }
         }
@@ -101,6 +104,15 @@ abstract class AppDatabase : RoomDatabase() {
                     "ON `notifications` (`seq`, `dismissTime`)",
             )
             db.execSQL("DROP INDEX IF EXISTS `index_notifications_key`")
+        }
+    }
+
+    /** 列表与搜索都按 postTime DESC + LIMIT 取行，靠该索引做「按序取行 → 凑够 LIMIT 即停」 */
+    private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_notifications_postTime` ON `notifications` (`postTime`)",
+            )
         }
     }
     }

@@ -46,6 +46,9 @@ val FILTERED_DECISIONS = setOf(
         androidx.room.Index("expireAt"),
         androidx.room.Index("learned"),
         androidx.room.Index("seq", "dismissTime"),
+        // 列表与搜索都按 postTime DESC + LIMIT 取行：有它才能「按序取行 → 凑够 LIMIT 即停」，
+        // 缺它时带 WHERE 的查询退化成全表扫描 + 临时 B 树排序，LIMIT 完全失去提前终止
+        androidx.room.Index("postTime"),
     ],
 )
 data class NotificationEntity(

@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -82,42 +83,45 @@ class HistoryViewModel(
     val advancedFilter = MutableStateFlow(HistoryAdvancedFilter())
 
     /**
-     * 历史列表（1.3.2 P2-5：三态下推 SQL）——tab 与搜索模式用 flatMapLatest 选择对应查询
-     * （搜索模式查三态并集，见 [searchMode]），每次 DB 变更只重查/重映当前查询的行
-     * （原来每条变更都重查 500 行再内存过滤）；搜索 200ms 防抖；显式 flowOn + distinctUntilChanged。
-     * 收益边界：各查询仍受 LIMIT 500 约束。
-     * 决策维度（原「已过滤」tab）与 App/已学习/日期同在窗口内内存过滤——三态 × 决策共 9 组，
+     * 历史列表（1.3.2 P2-5：三态下推 SQL）——tab / 搜索模式 / 搜索词一起作为 flatMapLatest 的键，
+     * 每次 DB 变更只重查当前查询的行。搜索词下推 SQL 后 LIMIT 才是「结果条数上限」：
+     * 此前它被三态并集的 LIMIT 500 当候选集用，窗口只有最近几分钟，18 分钟前的通知搜不到。
+     * 搜索词只 debounce 一处（在内层），两处 debounce 会各取各的值、键与数据不一致。
+     * 决策维度（原「已过滤」tab）与 App/已学习/日期仍在窗口内内存过滤——三态 × 决策共 9 组，
      * 不值得为 SQL 下推铺 9 个查询。
      */
     val list: StateFlow<List<NotificationEntity>> =
         combine(
-            combine(tab, searchMode) { t, sm -> t to sm }
-                .flatMapLatest { (t, sm) ->
-                    if (sm) {
-                        dao.listAllStates()
-                    } else {
+            combine(tab, searchMode, search.debounce(200)) { t, sm, q -> Triple(t, sm, q) }
+                .distinctUntilChanged()
+                .flatMapLatest { (t, sm, q) ->
+                    if (!sm) {
                         when (t) {
                             HistoryTab.VISIBLE -> dao.listVisible()
                             HistoryTab.DISMISSED -> dao.listDismissed()
                             HistoryTab.HISTORY -> dao.listHistory()
                         }
+                    } else if (q.isBlank()) {
+                        dao.listAllStates()
+                    } else {
+                        // SQL 结果当粗筛再按 Unicode 语义收一遍：LIKE 只对 ASCII 忽略大小写
+                        dao.searchAllStates(likePattern(q))
+                            .map { rows -> rows.filter { matches(q, it) } }
                     }
                 },
-            search.debounce(200),
             advancedFilter,
-        ) { rows, q, adv ->
-            var out = if (q.isBlank()) rows else rows.filter {
-                it.appName.contains(q, true) ||
-                    it.title.contains(q, true) ||
-                    it.content.contains(q, true) ||
-                    it.packageName.contains(q, true)
-            }
-            if (!adv.isDefault) out = applyAdvanced(out, adv)
-            out
-        }
+        ) { rows, adv -> if (adv.isDefault) rows else applyAdvanced(rows, adv) }
             .distinctUntilChanged()
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** `\` → `\\`、`%` → `\%`、`_` → `\_`；不转义时搜 `%` 会命中整表 */
+    private fun likePattern(q: String): String =
+        "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+    private fun matches(q: String, n: NotificationEntity): Boolean =
+        n.appName.contains(q, true) || n.title.contains(q, true) ||
+            n.content.contains(q, true) || n.packageName.contains(q, true)
 
     private fun applyAdvanced(
         rows: List<NotificationEntity>,
