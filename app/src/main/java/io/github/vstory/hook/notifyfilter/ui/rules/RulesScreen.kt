@@ -2,6 +2,7 @@ package io.github.vstory.hook.notifyfilter.ui.rules
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,13 +34,14 @@ import io.github.vstory.hook.notifyfilter.data.db.RuleDao
 import io.github.vstory.hook.notifyfilter.data.db.RuleEntity
 import io.github.vstory.hook.notifyfilter.data.db.WhitelistDao
 import io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity
+import io.github.vstory.hook.notifyfilter.ui.component.CardItem
 import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
 import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
+import io.github.vstory.hook.notifyfilter.ui.component.groupedCardItems
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -176,15 +177,29 @@ fun RulesScreen(
                     if (rules.isEmpty()) {
                         EmptyHint("暂无手动规则", "点击右下角 + 新建：选择 APP + 条件组合（8 种匹配方式）")
                     } else {
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
-                            items(rules, key = { it.id }) { rule ->
-                                RuleCard(
-                                    rule,
-                                    hitCount = hitCounts[rule.id] ?: 0,
-                                    onToggle = { vm.toggle(rule, it) },
-                                    onDelete = { vm.delete(rule) },
-                                )
-                            }
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 12.dp),
+                        ) {
+                            groupedCardItems(
+                                keyPrefix = "rules",
+                                outerBottomPadding = 12.dp,
+                                items = rules.map { rule ->
+                                    CardItem(rule.id.toString()) {
+                                        SwitchPreference(
+                                            checked = rule.enabled,
+                                            onCheckedChange = { vm.toggle(rule, it) },
+                                            title = rule.appName,
+                                            summary = ruleSummaryText(rule, hitCounts[rule.id] ?: 0),
+                                            endActions = {
+                                                IconButton(onClick = { vm.delete(rule) }) {
+                                                    Icon(MiuixIcons.Delete, contentDescription = "删除")
+                                                }
+                                            },
+                                        )
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -192,10 +207,27 @@ fun RulesScreen(
                     if (whitelist.isEmpty()) {
                         EmptyHint("白名单为空", "白名单内的 APP 通知不会被 AI 过滤；点击右下角 + 添加")
                     } else {
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
-                            items(whitelist, key = { it.packageName }) { item ->
-                                WhitelistCard(item, onRemove = { vm.removeWhitelist(item.packageName) })
-                            }
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 12.dp),
+                        ) {
+                            groupedCardItems(
+                                keyPrefix = "whitelist",
+                                outerBottomPadding = 12.dp,
+                                items = whitelist.map { item ->
+                                    CardItem(item.packageName) {
+                                        BasicComponent(
+                                            title = item.appName,
+                                            summary = item.packageName,
+                                            endActions = {
+                                                IconButton(onClick = { vm.removeWhitelist(item.packageName) }) {
+                                                    Icon(MiuixIcons.Delete, contentDescription = "移除")
+                                                }
+                                            },
+                                        )
+                                    }
+                                },
+                            )
                         }
                     }
                 }
@@ -222,34 +254,6 @@ private fun ruleSummaryText(rule: RuleEntity, hitCount: Int): String {
         }
     }
     return "$conditions\n已过滤 $hitCount 条通知"
-}
-
-@Composable
-private fun RuleCard(rule: RuleEntity, hitCount: Int, onToggle: (Boolean) -> Unit, onDelete: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        SwitchPreference(
-            checked = rule.enabled,
-            onCheckedChange = onToggle,
-            title = rule.appName,
-            summary = ruleSummaryText(rule, hitCount),
-            endActions = {
-                IconButton(onClick = onDelete) { Icon(MiuixIcons.Delete, contentDescription = "删除") }
-            },
-        )
-    }
-}
-
-@Composable
-private fun WhitelistCard(item: WhitelistEntity, onRemove: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        BasicComponent(
-            title = item.appName,
-            summary = item.packageName,
-            endActions = {
-                IconButton(onClick = onRemove) { Icon(MiuixIcons.Delete, contentDescription = "移除") }
-            },
-        )
-    }
 }
 
 @Composable
