@@ -100,9 +100,9 @@ android {
         // 下载 URL 按版本号拼（与工作流的 tag / 资产名一一对应）：
         //   {base}/v{versionName 去空格}.{versionCode}/NotifyFilter.{同}.{code}.release.apk
         buildConfigField("String", "UPDATE_LATEST",
-            "\"https://raw.githubusercontent.com/Vstory/NotificationCleaner/main/latest.json\"")
+            "\"https://raw.githubusercontent.com/Vstory/NotifyFilter/main/latest.json\"")
         buildConfigField("String", "UPDATE_APK_BASE",
-            "\"https://github.com/Vstory/NotificationCleaner/releases/download\"")
+            "\"https://github.com/Vstory/NotifyFilter/releases/download\"")
     }
     sourceSets {
         // 1.3.2（P3-7②）：model.bin 已移至 src/main/resources/model/（单通道打包）——
