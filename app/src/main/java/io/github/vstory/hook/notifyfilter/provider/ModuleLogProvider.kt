@@ -43,6 +43,7 @@ class ModuleLogProvider : ContentProvider() {
             return null
         }
 
+        val postTime = values.getAsLong(COL_POST_TIME) ?: System.currentTimeMillis()
         val entity = NotificationEntity(
             packageName = values.getAsString(COL_PACKAGE).orEmpty(),
             appName = appName(ctx, values.getAsString(COL_PACKAGE).orEmpty()),
@@ -53,11 +54,14 @@ class ModuleLogProvider : ContentProvider() {
                 .takeCodepoints(io.github.vstory.hook.notifyfilter.ai.FeatureHasher.MAX_TEXT_LEN),
             content = values.getAsString(COL_CONTENT).orEmpty()
                 .takeCodepoints(io.github.vstory.hook.notifyfilter.ai.FeatureHasher.MAX_TEXT_LEN),
-            postTime = values.getAsLong(COL_POST_TIME) ?: System.currentTimeMillis(),
+            postTime = postTime,
             adProbability = values.getAsFloat(COL_PROBABILITY) ?: 0f,
             decision = decision,
-            expireAt = (values.getAsLong(COL_POST_TIME) ?: System.currentTimeMillis()) + EXPIRE_MS,
+            expireAt = postTime + EXPIRE_MS,
             key = values.getAsString(COL_KEY).orEmpty(),
+            // 模块端在 system_server 内拦下，通知从未进通知栏，也就永远等不到
+            // onNotificationRemoved —— 不在这里置位会被历史页显示成「正显示」
+            dismissTime = postTime,
         )
         if (entity.packageName.isBlank() || entity.decision.isBlank()) return null
 

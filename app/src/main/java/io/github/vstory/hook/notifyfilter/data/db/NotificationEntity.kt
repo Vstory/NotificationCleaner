@@ -38,12 +38,14 @@ val FILTERED_DECISIONS = setOf(
 @Entity(
     tableName = "notifications",
     indices = [
-        androidx.room.Index("key"),
+        // (key, seq) 取代原单列 key 索引：当前版本查询固定带 seq = 0
+        androidx.room.Index("key", "seq"),
         // 1.3.2（P2-2）：去重索引改 contentHash（原 (packageName,title,content,postTime)
         // 存整段文本，体积大、比较 O(len)）
         androidx.room.Index("packageName", "contentHash", "postTime"),
         androidx.room.Index("expireAt"),
         androidx.room.Index("learned"),
+        androidx.room.Index("seq", "dismissTime"),
     ],
 )
 data class NotificationEntity(
@@ -65,6 +67,11 @@ data class NotificationEntity(
     // 1.3.2（P2-2）：title+'\u0000'+content 的 64 位哈希（[contentHashOf]），60s 去重比较用。
     // defaultValue 供 v6 迁移的 ADD COLUMN DEFAULT 0（存量行填哨兵 0，见 MIGRATION_5_6）
     @androidx.room.ColumnInfo(defaultValue = "0") val contentHash: Long = 0,
+    // 三态判定依据（照通知滤盒）：seq = 0 为同 key 最新版本，>0 是被后来同 key 通知覆盖的旧版本；
+    // dismissTime = -1 表示仍在通知栏，>= 0 为被撤销的时刻；dismissReason 存 NLS 的 reason 常量
+    @androidx.room.ColumnInfo(defaultValue = "0") val seq: Int = 0,
+    @androidx.room.ColumnInfo(defaultValue = "-1") val dismissTime: Long = -1,
+    @androidx.room.ColumnInfo(defaultValue = "0") val dismissReason: Int = 0,
 )
 
 /**

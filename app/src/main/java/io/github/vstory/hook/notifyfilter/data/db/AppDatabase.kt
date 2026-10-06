@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [NotificationEntity::class, RuleEntity::class, WhitelistEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,7 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "notification_cleaner.db",
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
                 .also { instance = it }
         }
@@ -81,6 +81,26 @@ abstract class AppDatabase : RoomDatabase() {
                     "ON `notifications` (`packageName`, `contentHash`, `postTime`)",
             )
             db.execSQL("DROP INDEX IF EXISTS `index_notifications_packageName_title_content_postTime`")
+        }
+    }
+
+    /**
+     * 三态改造：通知表加 seq / dismissTime / dismissReason。
+     * 存量行按「已取消」回填（dismissTime = postTime）——升级瞬间无从得知通知栏现存哪些，
+     * 让它们全落到「正显示」是假的；下次监听连接时由 reconcileVisible 按实际通知栏校正。
+     */
+    private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `notifications` ADD COLUMN `seq` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `notifications` ADD COLUMN `dismissTime` INTEGER NOT NULL DEFAULT -1")
+            db.execSQL("ALTER TABLE `notifications` ADD COLUMN `dismissReason` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `notifications` SET `dismissTime` = `postTime`")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_notifications_key_seq` ON `notifications` (`key`, `seq`)")
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_notifications_seq_dismissTime` " +
+                    "ON `notifications` (`seq`, `dismissTime`)",
+            )
+            db.execSQL("DROP INDEX IF EXISTS `index_notifications_key`")
         }
     }
     }

@@ -197,6 +197,13 @@ class CleanerListenerService : NotificationListenerService() {
         runCatching {
             val active = activeNotifications
             android.util.Log.i("NfWatch", "backfill scan: ${active?.size ?: -1} active notifications")
+            // 三态校正：升级回填/进程重启期间被误标为已取消、实际仍在通知栏的行改回正显示
+            val activeKeys = active?.map { it.key }?.filter { it.isNotEmpty() }.orEmpty()
+            if (activeKeys.isNotEmpty()) {
+                appScope?.launch(Dispatchers.IO) {
+                    runCatching { ServiceLocator.db.notificationDao().markPresentVisible(activeKeys) }
+                }
+            }
             active?.forEach { sbn -> dispatch(sbn, fromBackfill = true) }
         }
         KeepAliveService.start(this)
@@ -231,6 +238,27 @@ class CleanerListenerService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         dispatch(sbn, fromBackfill = false)
+    }
+
+    /**
+     * 撤销登记（2.2.0 三态）：必须 override 带 reason 的三参重载，两参版拿不到取消原因。
+     * 本模块自己 cancelNotification 撤下的拦截通知也走这里，等价于"已被撤销"。
+     */
+    override fun onNotificationRemoved(
+        sbn: StatusBarNotification,
+        rankingMap: NotificationListenerService.RankingMap?,
+        reason: Int,
+    ) {
+        super.onNotificationRemoved(sbn, rankingMap, reason)
+        val key = sbn.key
+        if (key.isEmpty()) return
+        val scope = appScope ?: return
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                ServiceLocator.db.notificationDao()
+                    .markDismissed(key, System.currentTimeMillis(), reason)
+            }
+        }
     }
 
     /** 实时回调与重连补扫共用入口；fromBackfill 决定走慢速补扫通道（1.2.1） */
@@ -412,6 +440,13 @@ class CleanerListenerService : NotificationListenerService() {
             decision = decision,
             expireAt = postTime + EXPIRE_MS,
             key = sbn.key,
+            // 拦截类的 cancelNotification 在上方已调用，而 onNotificationRemoved 可能在本次入库
+            // 之前就跑到（协程并发）→ 那时表里还没有行，撤销标记会丢。这里入库即置位。
+            dismissTime = if (decision == DECISION_FILTERED_BY_AI || decision == DECISION_FILTERED_BY_RULE) {
+                postTime
+            } else {
+                -1
+            },
         )
         insertMutex.withLock {
             val outcome = dao.upsertSlot(entity, postTime - DEDUP_WINDOW_MS)

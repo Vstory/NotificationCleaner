@@ -16,29 +16,23 @@ interface NotificationDao {
     suspend fun update(n: NotificationEntity)
 
     /**
-     * 槽位写入（1.3.2 P1-1）：findByKey → update 或（findRecentDuplicate 去重后）insert
-     * 合并为单事务，fsync 3→1。两处写入路径（NLS handle / ModuleLogProvider）共用。
-     * @return 槽位已存在并已 update → [SlotOutcome]（携带原 decision，供拦截计数）；
-     *         新插入 → [SlotOutcome]（previousDecision=null, inserted=true）；
+     * 槽位写入（1.3.2 P1-1，2.2.0 加版本语义）：同 key 已有当前版本时，
+     * 旧行 seq+1 退位成历史版本，新数据以 seq = 0 入表（照通知滤盒的 history.seq 机制）。
+     * 两处写入路径（NLS handle / ModuleLogProvider）共用。
+     * @return 该 key 此前已有记录（旧版已退位）→ [SlotOutcome]（携带原 decision，供拦截计数）；
+     *         该 key 首次出现 → [SlotOutcome]（previousDecision=null, inserted=true）；
      *         60s 去重命中跳过 → null
      */
     @Transaction
     suspend fun upsertSlot(n: NotificationEntity, dedupSince: Long): SlotOutcome? {
-        // P2-2：去重哈希在写入时统一计算（update 路径同步刷新，保证存量行哈希与内容一致）
+        // P2-2：去重哈希在写入时统一计算（两条路径同步刷新，保证存量行哈希与内容一致）
         val hash = contentHashOf(n.title, n.content)
         val existing = findByKey(n.key)
         if (existing != null) {
-            update(
-                existing.copy(
-                    title = n.title,
-                    content = n.content,
-                    postTime = n.postTime,
-                    adProbability = n.adProbability,
-                    decision = n.decision,
-                    expireAt = n.expireAt,
-                    contentHash = hash,
-                ),
-            )
+            // 只改 seq：dismissTime 留给三态判定，历史版本不参与「还在不在通知栏」
+            update(existing.copy(seq = existing.seq + 1))
+            insert(n.copy(contentHash = hash, seq = 0, dismissTime = -1, dismissReason = 0))
+            trimVersions(n.key, MAX_VERSIONS_PER_KEY)
             return SlotOutcome(previousDecision = existing.decision, inserted = false)
         }
         val dup = findRecentDuplicate(n.packageName, hash, dedupSince)
@@ -47,23 +41,54 @@ interface NotificationDao {
         return SlotOutcome(previousDecision = null, inserted = true)
     }
 
+    /** 版本裁剪：同 key 只留 seq < keep 的版本，已学习的行保留（标注集不能丢） */
+    @Query("DELETE FROM notifications WHERE `key` = :key AND seq >= :keep AND learned = 0")
+    suspend fun trimVersions(key: String, keep: Int)
+
+    /** 撤销登记（NLS onNotificationRemoved）：只标当前版本，已标过的不覆盖 */
+    @Query(
+        "UPDATE notifications SET dismissTime = :time, dismissReason = :reason " +
+            "WHERE `key` = :key AND seq = 0 AND dismissTime = -1",
+    )
+    suspend fun markDismissed(key: String, time: Long, reason: Int)
+
+    /** 重连校正：升级回填/进程重启后误标为已取消、实际仍在通知栏的行改回正显示 */
+    @Query(
+        "UPDATE notifications SET dismissTime = -1, dismissReason = 0 WHERE seq = 0 " +
+            "AND dismissTime != -1 AND `key` IN (:keys)",
+    )
+    suspend fun markPresentVisible(keys: List<String>)
+
     /** 应用名回填（1.3.2 P0-5）：仅更新"appName 尚为包名"的行，避免覆盖已解析的历史行 */
     @Query("UPDATE notifications SET appName = :appName WHERE packageName = :pkg AND appName = :pkg")
     suspend fun updateAppName(pkg: String, appName: String)
 
-    @Query("SELECT * FROM notifications ORDER BY postTime DESC LIMIT 500")
+    /** 列表一律只看当前版本（seq = 0）：旧版本归「历史」，不进主列表与统计口径 */
+    @Query("SELECT * FROM notifications WHERE seq = 0 ORDER BY postTime DESC LIMIT 500")
     fun listAll(): Flow<List<NotificationEntity>>
 
-    @Query("SELECT * FROM notifications WHERE decision = :decision ORDER BY postTime DESC LIMIT 500")
+    @Query("SELECT * FROM notifications WHERE seq = 0 AND decision = :decision ORDER BY postTime DESC LIMIT 500")
     fun listByDecision(decision: String): Flow<List<NotificationEntity>>
 
     /** 按决策集合查询（1.2.1：模块端拦截的 *_MODULE 决策与 NLS 决策合并展示） */
-    @Query("SELECT * FROM notifications WHERE decision IN (:decisions) ORDER BY postTime DESC LIMIT 500")
+    @Query("SELECT * FROM notifications WHERE seq = 0 AND decision IN (:decisions) ORDER BY postTime DESC LIMIT 500")
     fun listByDecisions(decisions: List<String>): Flow<List<NotificationEntity>>
 
     /** 决策集合之外的通知（1.3.2 P2-5："正常" tab 下推 SQL，不再内存过滤 500 行） */
-    @Query("SELECT * FROM notifications WHERE decision NOT IN (:decisions) ORDER BY postTime DESC LIMIT 500")
+    @Query("SELECT * FROM notifications WHERE seq = 0 AND decision NOT IN (:decisions) ORDER BY postTime DESC LIMIT 500")
     fun listNotInDecisions(decisions: List<String>): Flow<List<NotificationEntity>>
+
+    /** 正显示：同 key 最新版本且仍在通知栏 */
+    @Query("SELECT * FROM notifications WHERE seq = 0 AND dismissTime = -1 ORDER BY postTime DESC LIMIT 500")
+    fun listVisible(): Flow<List<NotificationEntity>>
+
+    /** 已取消：同 key 最新版本且已被撤销 */
+    @Query("SELECT * FROM notifications WHERE seq = 0 AND dismissTime != -1 ORDER BY postTime DESC LIMIT 500")
+    fun listDismissed(): Flow<List<NotificationEntity>>
+
+    /** 历史：被后到的同 key 通知覆盖掉的旧版本 */
+    @Query("SELECT * FROM notifications WHERE seq > 0 ORDER BY postTime DESC LIMIT 500")
+    fun listHistory(): Flow<List<NotificationEntity>>
 
     @Query("SELECT * FROM notifications WHERE learned = 1 ORDER BY postTime DESC LIMIT 500")
     fun listLearned(): Flow<List<NotificationEntity>>
@@ -79,8 +104,8 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE id = :id")
     suspend fun getById(id: Long): NotificationEntity?
 
-    /** 同一通知槽位（sbn.key）→ 视为同一条通知，内容更新就地覆盖（1.1.6：不再按内容拆行） */
-    @Query("SELECT * FROM notifications WHERE `key` = :key ORDER BY id DESC LIMIT 1")
+    /** 同一通知槽位的**当前**版本（seq = 0）；历史版本同 key 也在表里，必须排除 */
+    @Query("SELECT * FROM notifications WHERE `key` = :key AND seq = 0 ORDER BY id DESC LIMIT 1")
     suspend fun findByKey(key: String): NotificationEntity?
 
     /** 60 秒内同 App + 同 contentHash（P2-2：64 位哈希替代整段文本等值）→ 重复推送，不重复入库 */
@@ -91,7 +116,7 @@ interface NotificationDao {
     suspend fun findRecentDuplicate(pkg: String, contentHash: Long, since: Long): NotificationEntity?
 
     @Query(
-        "SELECT COUNT(*) FROM notifications WHERE decision IN " +
+        "SELECT COUNT(*) FROM notifications WHERE seq = 0 AND decision IN " +
             "('FILTERED_BY_AI','FILTERED_BY_AI_MODULE','FILTERED_BY_RULE','FILTERED_BY_RULE_MODULE')"
     )
     fun filteredCount(): Flow<Int>
@@ -120,6 +145,9 @@ interface NotificationDao {
 }
 
 data class AppRef(val packageName: String, val appName: String)
+
+/** 每个通知槽位保留的版本数（含当前版本）；进度类通知同 key 高频更新，不设上限会撑爆表 */
+const val MAX_VERSIONS_PER_KEY = 10
 
 /** 槽位写入结果（1.3.2 P1-1，[NotificationDao.upsertSlot] 返回值，供拦截计数使用） */
 data class SlotOutcome(val previousDecision: String?, val inserted: Boolean)
