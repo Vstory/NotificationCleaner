@@ -39,6 +39,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
@@ -107,10 +108,13 @@ fun RuleEditScreen(
         },
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(top = 12.dp, bottom = 24.dp),
         ) {
-            // ---- 选中 APP ----
-            Card(Modifier.fillMaxWidth()) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                 ArrowPreference(
                     title = "选择 APP",
                     summary = if (selectedApps.isEmpty()) {
@@ -124,19 +128,14 @@ fun RuleEditScreen(
                     },
                 )
             }
-            Spacer(Modifier.height(12.dp))
-
-            // ---- 条件关系 ----
-            Text("条件满足方式", style = MiuixTheme.textStyles.body1)
-            Spacer(Modifier.height(8.dp))
+            SmallTitle("条件满足方式")
             TabRowWithContour(
                 tabs = listOf("并且", "或者"),
                 selectedTabIndex = if (join == "AND") 0 else 1,
                 onTabSelected = { join = if (it == 0) "AND" else "OR" },
+                modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp),
             )
-            Spacer(Modifier.height(12.dp))
 
-            // ---- 条件列表 ----
             conditions.forEachIndexed { idx, c ->
                 ConditionCard(
                     index = idx,
@@ -144,18 +143,17 @@ fun RuleEditScreen(
                     canDelete = conditions.size > 1,
                     onChange = { updateCondition(idx, it) },
                     onDelete = { conditions = conditions.filterIndexed { i, _ -> i != idx } },
+                    modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 10.dp),
                 )
-                Spacer(Modifier.height(10.dp))
             }
             Button(
                 onClick = {
                     conditions = conditions + RuleCondition(MATCH_TITLE, MatchMode.ANY_TEXT, listOf(""))
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             ) {
                 Text("添加条件（${conditions.size}）")
             }
-            Spacer(Modifier.height(16.dp))
 
             Button(
                 enabled = valid,
@@ -166,10 +164,9 @@ fun RuleEditScreen(
                     vm.save(selectedApps, RuleConditionSet(join, cleaned))
                     onBack()
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(top = 12.dp),
                 colors = ButtonDefaults.buttonColorsPrimary(),
             ) { Text("保存规则") }
-            Spacer(Modifier.height(24.dp))
         }
     }
 }
@@ -181,8 +178,9 @@ private fun ConditionCard(
     canDelete: Boolean,
     onChange: (RuleCondition) -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 12.dp)) {
             Row(
                 Modifier.padding(horizontal = 16.dp),
