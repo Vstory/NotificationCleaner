@@ -1,5 +1,10 @@
 package io.github.vstory.hook.notifyfilter.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -34,6 +40,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import io.github.vstory.hook.notifyfilter.ServiceLocator
+import io.github.vstory.hook.notifyfilter.data.BottomBarMode
+import io.github.vstory.hook.notifyfilter.data.FloatingBottomBarStyle
 import io.github.vstory.hook.notifyfilter.data.SettingsRepository
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveStatus
@@ -62,6 +70,7 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -134,6 +143,19 @@ class SettingsViewModel(
 
     fun setFloatingNavBar(v: Boolean) {
         viewModelScope.launch { settings.setFloatingNavBar(v) }
+    }
+
+    val floatingNavBarStyle = settings.floatingNavBarStyle
+        .stateIn(viewModelScope, SharingStarted.Eagerly, FloatingBottomBarStyle.Miuix)
+    val bottomBarMode = settings.bottomBarMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, BottomBarMode.IconAndText)
+
+    fun setFloatingNavBarStyle(v: FloatingBottomBarStyle) {
+        viewModelScope.launch { settings.setFloatingNavBarStyle(v) }
+    }
+
+    fun setBottomBarMode(v: BottomBarMode) {
+        viewModelScope.launch { settings.setBottomBarMode(v) }
     }
 
     // ---- LSPosed 框架服务状态（Dev 7：libxposed service 绑定 + 作用域）----
@@ -273,6 +295,14 @@ fun SettingsScreen(
     val intercept by vm.interceptMode.collectAsState()
     val excludeRecents by vm.excludeFromRecents.collectAsState()
     val floatingNavBar by vm.floatingNavBar.collectAsState()
+    val floatingBarStyle by vm.floatingNavBarStyle.collectAsState()
+    val bottomBarMode by vm.bottomBarMode.collectAsState()
+    val floatingBarStyles = FloatingBottomBarStyle.entries.toList()
+    val floatingBarStyleItems = listOf("Miuix", "iOS 风格（液态玻璃）")
+    val styleIndex = floatingBarStyles.indexOf(floatingBarStyle).coerceAtLeast(0)
+    val bottomBarModes = BottomBarMode.entries.toList()
+    val bottomBarModeItems = listOf("图标与文字", "仅图标")
+    val modeIndex = bottomBarModes.indexOf(bottomBarMode).coerceAtLeast(0)
     val filteredCount by vm.filteredCount.collectAsState()
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
@@ -370,17 +400,42 @@ fun SettingsScreen(
                 ),
             )
 
-            item { SmallTitle("界面") }
+            item { SmallTitle("底部导航栏") }
             groupedCardItems(
-                keyPrefix = "settings_ui",
+                keyPrefix = "settings_nav",
                 outerBottomPadding = 12.dp,
                 items = listOf(
-                    CardItem("floatingNavBar") {
+                    CardItem("floating") {
                         SwitchPreference(
                             checked = floatingNavBar,
                             onCheckedChange = { vm.setFloatingNavBar(it) },
                             title = "悬浮底栏",
-                            summary = "开：悬浮胶囊，内容从底栏后面穿过；关：贴底普通底栏",
+                            summary = "在手机布局中使用悬浮底部导航栏",
+                        )
+                        // 样式仅在悬浮档下有意义，收起时连同分组一起淡出（贴底档的形态由「底栏选项」决定）
+                        AnimatedVisibility(
+                            visible = floatingNavBar,
+                            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                        ) {
+                            OverlayDropdownPreference(
+                                title = "悬浮底栏样式",
+                                summary = floatingBarStyleItems[styleIndex],
+                                items = floatingBarStyleItems,
+                                selectedIndex = styleIndex,
+                                onSelectedIndexChange = {
+                                    vm.setFloatingNavBarStyle(floatingBarStyles[it])
+                                },
+                            )
+                        }
+                    },
+                    CardItem("mode") {
+                        OverlayDropdownPreference(
+                            title = "底栏选项",
+                            summary = bottomBarModeItems[modeIndex],
+                            items = bottomBarModeItems,
+                            selectedIndex = modeIndex,
+                            onSelectedIndexChange = { vm.setBottomBarMode(bottomBarModes[it]) },
                         )
                     },
                 ),

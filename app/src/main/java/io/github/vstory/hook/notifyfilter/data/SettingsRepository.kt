@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -62,6 +63,28 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setFloatingNavBar(value: Boolean) {
         context.dataStore.edit { it[keyFloatingNavBar] = value }
+    }
+
+    // ---- 悬浮底栏样式 / 底栏内容（与 Mishka 的导航设置一一对应）----
+    private val keyFloatingNavBarStyle = stringPreferencesKey("floating_nav_bar_style")
+    private val keyBottomBarMode = stringPreferencesKey("bottom_bar_mode")
+
+    val floatingNavBarStyle: Flow<FloatingBottomBarStyle> = context.dataStore.data.map {
+        FloatingBottomBarStyle.fromStorage(
+            it[keyFloatingNavBarStyle] ?: FloatingBottomBarStyle.Miuix.storageValue,
+        )
+    }
+
+    suspend fun setFloatingNavBarStyle(value: FloatingBottomBarStyle) {
+        context.dataStore.edit { it[keyFloatingNavBarStyle] = value.storageValue }
+    }
+
+    val bottomBarMode: Flow<BottomBarMode> = context.dataStore.data.map {
+        BottomBarMode.fromStorage(it[keyBottomBarMode] ?: BottomBarMode.IconAndText.storageValue)
+    }
+
+    suspend fun setBottomBarMode(value: BottomBarMode) {
+        context.dataStore.edit { it[keyBottomBarMode] = value.storageValue }
     }
 
     /** 累计拦截数（常驻通知展示）：AI 拦截 / 用户规则拦截 */

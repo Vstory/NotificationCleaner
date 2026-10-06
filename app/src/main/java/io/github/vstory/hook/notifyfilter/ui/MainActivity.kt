@@ -39,11 +39,16 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
 import io.github.vstory.hook.notifyfilter.ServiceLocator
+import io.github.vstory.hook.notifyfilter.data.BottomBarMode
+import io.github.vstory.hook.notifyfilter.data.FloatingBottomBarStyle
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
-import io.github.vstory.hook.notifyfilter.ui.component.blur.LocalBlurEnabled
+import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
 import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
+import io.github.vstory.hook.notifyfilter.ui.component.liquid.IosLiquidGlassNavigationBar
 import io.github.vstory.hook.notifyfilter.ui.history.HistoryScreen
 import io.github.vstory.hook.notifyfilter.ui.nav.LocalNavigator
 import io.github.vstory.hook.notifyfilter.ui.nav.MainPagerState
@@ -66,11 +71,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBarDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.NavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationBarDefaults
+import top.yukonga.miuix.kmp.basic.NavigationBarDisplayMode
 import top.yukonga.miuix.kmp.basic.NavigationBarItem
+import top.yukonga.miuix.kmp.basic.NavigationItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
@@ -365,9 +370,15 @@ fun MainScaffold() {
 @Composable
 private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     val floatingNavBar by ServiceLocator.settings.floatingNavBar.collectAsState(initial = true)
-    // 贴底档是不透明底栏，用不到「每帧录一次图层」的开销：不创建也不挂 backdrop
-    val bottomBarBackdrop = rememberBlurBackdrop(enabled = floatingNavBar && LocalBlurEnabled.current)
-    val floatingBarColor = if (bottomBarBackdrop != null) {
+    val floatingBarStyle by ServiceLocator.settings.floatingNavBarStyle
+        .collectAsState(initial = FloatingBottomBarStyle.Miuix)
+    val bottomBarMode by ServiceLocator.settings.bottomBarMode
+        .collectAsState(initial = BottomBarMode.IconAndText)
+
+    val bottomBarBackdrop = rememberBlurBackdrop()
+    val bottomBarBlurActive = bottomBarBackdrop != null
+    val barColor = if (bottomBarBlurActive) Color.Transparent else MiuixTheme.colorScheme.surface
+    val floatingBarColor = if (bottomBarBlurActive) {
         Color.Transparent
     } else {
         MiuixTheme.colorScheme.surfaceContainer
@@ -378,7 +389,7 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     val floatingHighlight = remember(isDark) {
         if (isDark) Highlight.GlassStrokeMiddleDark else Highlight.GlassStrokeMiddleLight
     }
-    val floatingBarModifier = if (bottomBarBackdrop != null) {
+    val floatingBarModifier = if (bottomBarBlurActive) {
         Modifier.textureBlur(
             backdrop = bottomBarBackdrop,
             shape = floatingBarShape,
@@ -394,35 +405,62 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
         Modifier
     }
 
+    val bottomBarDisplayMode = when (bottomBarMode) {
+        BottomBarMode.IconAndText -> NavigationBarDisplayMode.IconAndText
+        BottomBarMode.IconOnly -> NavigationBarDisplayMode.IconOnly
+    }
+    val showBottomBarLabels = bottomBarMode == BottomBarMode.IconAndText
+    val navigationItems = tabs.map { NavigationItem(label = it.label, icon = it.icon) }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             if (floatingNavBar) {
-                FloatingNavigationBar(
-                    modifier = floatingBarModifier,
-                    color = floatingBarColor,
-                    cornerRadius = floatingPillRadius,
-                ) {
-                    tabs.forEachIndexed { index, tab ->
-                        LabeledFloatingBarItem(
-                            selected = mainPagerState.selectedPage == index,
-                            onClick = { mainPagerState.animateToPage(index) },
-                            icon = tab.icon,
-                            label = tab.label,
-                        )
+                if (floatingBarStyle == FloatingBottomBarStyle.IosLike) {
+                    IosLiquidGlassNavigationBar(
+                        items = navigationItems,
+                        selectedIndex = mainPagerState.selectedPage,
+                        onItemClick = { mainPagerState.animateToPage(it) },
+                        backdrop = bottomBarBackdrop,
+                        isBlurActive = bottomBarBlurActive,
+                        isDark = isDark,
+                        showLabels = showBottomBarLabels,
+                    )
+                } else {
+                    FloatingNavigationBar(
+                        modifier = floatingBarModifier,
+                        color = floatingBarColor,
+                        cornerRadius = floatingPillRadius,
+                    ) {
+                        navigationItems.forEachIndexed { index, item ->
+                            MiuixFloatingNavigationBarItem(
+                                item = item,
+                                selected = mainPagerState.selectedPage == index,
+                                onClick = { mainPagerState.animateToPage(index) },
+                                showLabel = showBottomBarLabels,
+                            )
+                        }
                     }
                 }
             } else {
-                DockedNavigationBar(
-                    selectedIndex = mainPagerState.selectedPage,
-                    onSelect = { mainPagerState.animateToPage(it) },
-                )
+                BlurredBar(backdrop = bottomBarBackdrop, blurActive = bottomBarBlurActive) {
+                    NavigationBar(color = barColor, mode = bottomBarDisplayMode) {
+                        navigationItems.forEachIndexed { index, item ->
+                            NavigationBarItem(
+                                selected = mainPagerState.selectedPage == index,
+                                onClick = { mainPagerState.animateToPage(index) },
+                                icon = item.icon,
+                                label = item.label,
+                            )
+                        }
+                    }
+                }
             }
         },
     ) { padding ->
         val bottomPadding = padding.calculateBottomPadding()
         HorizontalPager(
-            modifier = if (bottomBarBackdrop != null) {
+            modifier = if (bottomBarBlurActive) {
                 Modifier.fillMaxSize().layerBackdrop(bottomBarBackdrop)
             } else {
                 Modifier.fillMaxSize()
@@ -461,34 +499,28 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
 
 /**
  * 自建件：库的 FloatingNavigationBarItem **只画图标**，label 仅作 contentDescription，
- * 胶囊里要「图标 + 文字」只能自己组合；不透明度档位沿用 miuix 的 Defaults。
+ * 胶囊里要「图标 + 文字」只能自己组合。
  */
 @Composable
-private fun LabeledFloatingBarItem(
+private fun MiuixFloatingNavigationBarItem(
+    item: NavigationItem,
     selected: Boolean,
     onClick: () -> Unit,
-    icon: ImageVector,
-    label: String,
+    showLabel: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
-    val base = MiuixTheme.colorScheme.onSurfaceContainer
-    val tint = base.copy(
-        alpha = base.alpha * when {
-            isPressed -> if (selected) {
-                NavigationBarDefaults.SelectedPressedAlpha
-            } else {
-                NavigationBarDefaults.UnselectedPressedAlpha
-            }
-
-            selected -> 1f
-            else -> NavigationBarDefaults.UnselectedAlpha
-        },
-    )
+    val onSurfaceContainerColor = MiuixTheme.colorScheme.onSurfaceContainer
+    val tint = when {
+        isPressed -> onSurfaceContainerColor.copy(alpha = if (selected) 0.7f else 0.5f)
+        selected -> onSurfaceContainerColor
+        else -> onSurfaceContainerColor.copy(alpha = 0.6f)
+    }
 
     Column(
-        modifier = Modifier
-            .defaultMinSize(minWidth = 56.dp, minHeight = 48.dp)
+        modifier = modifier
+            .defaultMinSize(minWidth = if (showLabel) 56.dp else 48.dp, minHeight = 48.dp)
             .selectable(
                 selected = selected,
                 onClick = onClick,
@@ -496,35 +528,23 @@ private fun LabeledFloatingBarItem(
                 interactionSource = interactionSource,
                 indication = null,
             )
-            .padding(horizontal = 8.dp, vertical = 5.dp),
+            .padding(horizontal = if (showLabel) 8.dp else 6.dp, vertical = 5.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            imageVector = icon,
-            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            imageVector = item.icon,
+            contentDescription = if (showLabel) null else item.label,
             tint = tint,
-            modifier = Modifier.size(FloatingNavigationBarDefaults.IconSize),
         )
-        Text(
-            text = label,
-            color = tint,
-            fontSize = NavigationBarDefaults.LabelFontSize,
-            maxLines = 1,
-        )
-    }
-}
-
-/** 贴底普通底栏档：不透明 surface 底色 + 顶部分隔线，作为悬浮毛玻璃的兼容兜底（低端机 / 不要玻璃观感）。 */
-@Composable
-private fun DockedNavigationBar(selectedIndex: Int, onSelect: (Int) -> Unit) {
-    NavigationBar {
-        tabs.forEachIndexed { index, tab ->
-            NavigationBarItem(
-                selected = selectedIndex == index,
-                onClick = { onSelect(index) },
-                icon = tab.icon,
-                label = tab.label,
+        if (showLabel) {
+            Text(
+                text = item.label,
+                color = tint,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
