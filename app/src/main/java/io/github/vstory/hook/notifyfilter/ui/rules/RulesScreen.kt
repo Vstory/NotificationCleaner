@@ -3,6 +3,7 @@ package io.github.vstory.hook.notifyfilter.ui.rules
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,6 +18,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -30,6 +34,8 @@ import io.github.vstory.hook.notifyfilter.data.db.RuleDao
 import io.github.vstory.hook.notifyfilter.data.db.RuleEntity
 import io.github.vstory.hook.notifyfilter.data.db.WhitelistDao
 import io.github.vstory.hook.notifyfilter.data.db.WhitelistEntity
+import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
+import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -38,9 +44,12 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.FloatingActionButton
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -105,6 +114,7 @@ class RulesViewModel(
 fun RulesScreen(
     onOpenRuleEdit: () -> Unit,
     onOpenAppPicker: () -> Unit,
+    bottomPadding: Dp = 0.dp,
     vm: RulesViewModel = viewModel(factory = rulesVmFactory()),
 ) {
     val rules by vm.rules.collectAsState()
@@ -112,14 +122,35 @@ fun RulesScreen(
     val hitCounts by vm.ruleHitCounts.collectAsState()
     var tab by remember { mutableStateOf(0) } // 0=过滤规则 1=白名单
 
+    val scrollBehavior = MiuixScrollBehavior()
+    val backdrop = rememberBlurBackdrop()
+    val blurActive = backdrop != null
+    val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface
+
+    // contentWindowInsets 清零：顶部 inset 由本页 TopAppBar 处理，底部靠外层底栏高度透传，
+    // 不再依赖 MainScaffold 的 padding，避免 inset 二次叠加
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            BlurredBar(backdrop = backdrop, blurActive = blurActive) {
+                TopAppBar(
+                    title = "规则",
+                    color = barColor,
+                    scrollBehavior = scrollBehavior,
+                )
+            }
+        },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                if (tab == 0) onOpenRuleEdit() else {
-                    AppPickerSession.initial = emptyList()
-                    onOpenAppPicker()
-                }
-            }) {
+            FloatingActionButton(
+                onClick = {
+                    if (tab == 0) onOpenRuleEdit() else {
+                        AppPickerSession.initial = emptyList()
+                        onOpenAppPicker()
+                    }
+                },
+                // contentWindowInsets 清零后 Scaffold 不再为 FAB 让出底栏高度，此处自行补足
+                modifier = Modifier.padding(bottom = bottomPadding),
+            ) {
                 Icon(
                     MiuixIcons.Add,
                     contentDescription = if (tab == 0) "新建规则" else "添加白名单",
@@ -128,7 +159,13 @@ fun RulesScreen(
             }
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
+        ) {
             TabRowWithContour(
                 tabs = listOf("过滤规则 (${rules.size})", "白名单 (${whitelist.size})"),
                 selectedTabIndex = tab,

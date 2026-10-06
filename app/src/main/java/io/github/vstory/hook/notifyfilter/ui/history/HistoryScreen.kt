@@ -26,11 +26,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -47,6 +50,8 @@ import io.github.vstory.hook.notifyfilter.data.db.DECISION_ONGOING
 import io.github.vstory.hook.notifyfilter.data.db.DECISION_WHITELIST
 import io.github.vstory.hook.notifyfilter.data.db.NotificationEntity
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveManager
+import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
+import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
 import io.github.vstory.hook.notifyfilter.ui.rules.AppPickerSession
 import java.time.Instant
 import java.time.LocalDate
@@ -58,6 +63,7 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
@@ -66,6 +72,8 @@ import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -86,7 +94,11 @@ private fun dayOf(epochMs: Long): LocalDate =
     Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalDate()
 
 @Composable
-fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpenAppPicker: () -> Unit = {}) {
+fun HistoryScreen(
+    vm: HistoryViewModel = viewModel(factory = vmFactory()),
+    onOpenAppPicker: () -> Unit = {},
+    bottomPadding: Dp = 0.dp,
+) {
     val list by vm.list.collectAsState()
     val filter by vm.filter.collectAsState()
     val search by vm.search.collectAsState()
@@ -112,13 +124,33 @@ fun HistoryScreen(vm: HistoryViewModel = viewModel(factory = vmFactory()), onOpe
         }
     }
 
-    // 1.4.0 Dev 13：外层 MainScaffold 已应用状态栏 inset，此处必须清零，
-    // 否则顶部 inset 双叠加 → 筛选按钮上方一大片空白
+    val scrollBehavior = MiuixScrollBehavior()
+    val backdrop = rememberBlurBackdrop()
+    val blurActive = backdrop != null
+    val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface
+
+    // contentWindowInsets 清零：顶部 inset 由本页 TopAppBar 处理，底部靠外层底栏高度透传，
+    // 两侧都不再依赖 MainScaffold 的 padding，避免 inset 二次叠加
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            BlurredBar(backdrop = backdrop, blurActive = blurActive) {
+                TopAppBar(
+                    title = "历史",
+                    color = barColor,
+                    scrollBehavior = scrollBehavior,
+                )
+            }
+        },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .padding(top = padding.calculateTopPadding(), bottom = bottomPadding),
+        ) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {

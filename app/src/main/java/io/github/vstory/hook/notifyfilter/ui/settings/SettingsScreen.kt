@@ -2,6 +2,7 @@ package io.github.vstory.hook.notifyfilter.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -20,9 +22,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -35,6 +40,10 @@ import io.github.vstory.hook.notifyfilter.notify.KeepAliveStatus
 import io.github.vstory.hook.notifyfilter.notify.RootExecutor
 import io.github.vstory.hook.notifyfilter.notify.ShizukuExecutor
 import io.github.vstory.hook.notifyfilter.notify.runKeepAliveCommands
+import io.github.vstory.hook.notifyfilter.ui.component.CardItem
+import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
+import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
+import io.github.vstory.hook.notifyfilter.ui.component.groupedCardItems
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,14 +53,20 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 class SettingsViewModel(
     private val settings: SettingsRepository,
@@ -69,7 +84,7 @@ class SettingsViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast
 
-    /** 高级保活命令执行结果（弹窗展示） */
+    /** 高级保活命令执行结果（弹窗展示，由「保活通道与修复」子页渲染） */
     private val _execResult = MutableStateFlow<String?>(null)
     val execResult: StateFlow<String?> = _execResult
 
@@ -246,6 +261,7 @@ fun SettingsScreen(
     onOpenOpenSource: () -> Unit = {},
     onOpenAdvanced: () -> Unit = {},
     onOpenAiModel: () -> Unit = {},
+    bottomPadding: Dp = 0.dp,
     vm: SettingsViewModel = viewModel(factory = settingsVmFactory()),
 ) {
     val threshold by vm.threshold.collectAsState()
@@ -254,13 +270,20 @@ fun SettingsScreen(
     val filteredCount by vm.filteredCount.collectAsState()
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
-    val lspServiceState by vm.lspServiceState.collectAsState()
-    val learnedSamples by vm.learnedSamples.collectAsState()
-    val execResult by vm.execResult.collectAsState()
     val historyRetentionDays by vm.historyRetentionDays.collectAsState()
     var thresholdDraft by remember(threshold) { mutableStateOf(threshold) }
     var retentionDraft by remember(historyRetentionDays) { mutableStateOf(historyRetentionDays) }
     val manufacturerHint = remember { ServiceLocator.keepAlive.manufacturerAutoStartHint() }
+
+    // 保活可用通道数：4 条通道任一条可用即说明保活链路有保障。
+    // 摘要必须放这里，否则用户要逐层点进子页才知道保活到底有没有生效。
+    // lspDetected 为 null 表示「无法检测」（检测不到 ≠ 未激活），按不可用计。
+    val availableChannels = listOfNotNull(
+        "Shizuku".takeIf { keepAlive.shizukuAvailable },
+        "Root".takeIf { keepAlive.rootAvailable },
+        "LSPosed".takeIf { keepAlive.lspDetected == true },
+        "无障碍".takeIf { keepAlive.accessibilityEnabled },
+    )
 
     // 多任务隐藏：切换后立即应用（API 29+ 直接设置任务标记，不重建任务）
     val context = LocalContext.current
@@ -286,193 +309,263 @@ fun SettingsScreen(
         viewModel(key = "update", factory = viewModelFactory { initializer { io.github.vstory.hook.notifyfilter.update.UpdateViewModel() } })
     val updateState by updateVm.state.collectAsState()
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-    ) {
-        Spacer(Modifier.height(8.dp))
+    val scrollBehavior = MiuixScrollBehavior()
+    val backdrop = rememberBlurBackdrop()
+    val blurActive = backdrop != null
+    val barColor = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface
 
-        SmallTitle("过滤")
-        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            SwitchPreference(
-                checked = intercept,
-                onCheckedChange = { vm.setInterceptMode(it) },
-                title = "拦截模式",
-                summary = "关闭后仅标记不拦截，便于观察误杀",
-            )
-            SliderPreference(
-                value = thresholdDraft,
-                onValueChange = { thresholdDraft = it },
-                title = "过滤阈值",
-                valueText = "%.2f".format(thresholdDraft),
-                valueRange = 0.5f..1.0f,
-                steps = 9,
-                onValueChangeFinished = { vm.setThreshold(thresholdDraft) },
-            )
-        }
-
-        SmallTitle("模型")
-        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            ArrowPreference(
-                title = "AI 模型",
-                summary = "已学习 $learnedSamples 条样本",
-                onClick = onOpenAiModel,
-            )
-        }
-
-        SmallTitle("权限与保活")
-        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            ArrowPreference(
-                title = "通知监听权限",
-                summary = if (keepAlive.listenerEnabled) "已授权" else "未授权，点击前往授权",
-                onClick = { vm.openListenerSettings() },
-            )
-            ArrowPreference(
-                title = "电池优化白名单",
-                summary = if (keepAlive.ignoringBattery) "已加入白名单" else "未加入，点击前往设置",
-                onClick = { vm.requestIgnoreBattery() },
-            )
-            SwitchPreference(
-                checked = excludeRecents,
-                onCheckedChange = { vm.setExcludeFromRecents(it) },
-                title = "在多任务界面隐藏",
-                summary = "从最近任务列表隐藏本应用卡片",
-            )
-        }
-
-        manufacturerHint?.let { hint ->
-            Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                Text(
-                    hint,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+    Scaffold(
+        topBar = {
+            BlurredBar(backdrop = backdrop, blurActive = blurActive) {
+                TopAppBar(
+                    title = "设置",
+                    color = barColor,
+                    scrollBehavior = scrollBehavior,
                 )
             }
-        }
+        },
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier)
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
+            contentPadding = PaddingValues(
+                top = innerPadding.calculateTopPadding(),
+                bottom = bottomPadding,
+            ),
+        ) {
+            item { SmallTitle("过滤") }
+            groupedCardItems(
+                keyPrefix = "settings_filter",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("intercept") {
+                        SwitchPreference(
+                            checked = intercept,
+                            onCheckedChange = { vm.setInterceptMode(it) },
+                            title = "拦截模式",
+                            summary = "关闭后仅标记不拦截，便于观察误杀",
+                        )
+                    },
+                    CardItem("threshold") {
+                        SliderPreference(
+                            value = thresholdDraft,
+                            onValueChange = { thresholdDraft = it },
+                            title = "过滤阈值",
+                            valueText = "%.2f".format(thresholdDraft),
+                            valueRange = 0.5f..1.0f,
+                            steps = 9,
+                            onValueChangeFinished = { vm.setThreshold(thresholdDraft) },
+                        )
+                    },
+                ),
+            )
 
-        SmallTitle("高级权限")
-        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            ArrowPreference(
-                title = "高级权限",
-                summary = "后台保活通道与故障修复",
-                onClick = onOpenAdvanced,
+            item { SmallTitle("模型与数据") }
+            groupedCardItems(
+                keyPrefix = "settings_model_data",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("aiModel") {
+                        ArrowPreference(
+                            title = "AI 模型",
+                            summary = "基线 NSPM v2",
+                            onClick = onOpenAiModel,
+                        )
+                    },
+                    CardItem("filtered") {
+                        ArrowPreference(
+                            title = "已过滤通知",
+                            summary = "$filteredCount 条",
+                            onClick = { onOpenStats("filtered") },
+                        )
+                    },
+                    CardItem("learned") {
+                        ArrowPreference(
+                            title = "已学习通知",
+                            summary = "$learnedCount 条",
+                            onClick = { onOpenStats("learned") },
+                        )
+                    },
+                    CardItem("retention") {
+                        SliderPreference(
+                            value = retentionDraft.toFloat(),
+                            onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
+                            title = "历史保留天数",
+                            summary = "仅对未学习通知生效，已学习的不受影响",
+                            valueText = "$retentionDraft 天",
+                            valueRange = 1f..30f,
+                            steps = 28,
+                            onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
+                        )
+                    },
+                    CardItem("diagLog") {
+                        ArrowPreference(
+                            title = "导出诊断日志",
+                            summary = when {
+                                diagExporting -> "导出中…"
+                                diagMsg != null -> diagMsg
+                                else -> "导出各模块最近 24 小时日志（ZIP）"
+                            },
+                            enabled = !diagExporting,
+                            onClick = {
+                                diagMsg = null
+                                diagExporting = true
+                                diagScope.launch {
+                                    val msg = runCatching {
+                                        val file = io.github.vstory.hook.notifyfilter.diagnostics.DiagExporter.export(diagContext)
+                                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                                            diagContext,
+                                            "${diagContext.packageName}.fileprovider",
+                                            file,
+                                        )
+                                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
+                                            type = "application/zip"
+                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        diagContext.startActivity(
+                                            android.content.Intent.createChooser(send, "分享诊断日志"),
+                                        )
+                                        "已导出: ${file.name}（${file.length() / 1024}KB）"
+                                    }.getOrElse { "导出失败: ${it.message}" }
+                                    diagExporting = false
+                                    diagMsg = msg
+                                }
+                            },
+                        )
+                    },
+                    CardItem("csvExport") {
+                        ArrowPreference(
+                            title = "导出历史通知 CSV",
+                            summary = when {
+                                csvExporting -> "导出中…"
+                                csvMsg != null -> csvMsg
+                                else -> "导出全部历史通知记录（CSV）"
+                            },
+                            enabled = !csvExporting,
+                            onClick = {
+                                csvMsg = null
+                                csvExporting = true
+                                csvScope.launch {
+                                    val msg = runCatching {
+                                        val file = io.github.vstory.hook.notifyfilter.diagnostics.HistoryCsvExporter.export(diagContext)
+                                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                                            diagContext,
+                                            "${diagContext.packageName}.fileprovider",
+                                            file,
+                                        )
+                                        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "text/csv"
+                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        diagContext.startActivity(
+                                            android.content.Intent.createChooser(send, "分享历史通知 CSV"),
+                                        )
+                                        "已导出 ${file.name}（${file.length() / 1024}KB）"
+                                    }.getOrElse { "导出失败: ${it.message}" }
+                                    csvExporting = false
+                                    csvMsg = msg
+                                }
+                            },
+                        )
+                    },
+                ),
             )
-        }
 
-        SmallTitle("数据")
-        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            ArrowPreference(
-                title = "已过滤 $filteredCount 条通知",
-                onClick = { onOpenStats("filtered") },
+            item { SmallTitle("保活") }
+            groupedCardItems(
+                keyPrefix = "settings_keepalive",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("listener") {
+                        ArrowPreference(
+                            title = "通知监听权限",
+                            summary = if (keepAlive.listenerEnabled) "已授权" else "未授权，点击前往授权",
+                            onClick = { vm.openListenerSettings() },
+                        )
+                    },
+                    CardItem("battery") {
+                        ArrowPreference(
+                            title = "电池优化白名单",
+                            summary = if (keepAlive.ignoringBattery) "已加入白名单" else "未加入，点击前往设置",
+                            onClick = { vm.requestIgnoreBattery() },
+                        )
+                    },
+                    CardItem("advanced") {
+                        ArrowPreference(
+                            title = "保活通道与修复",
+                            summary = if (availableChannels.isEmpty()) {
+                                "未启用，点击配置保活通道"
+                            } else {
+                                "${availableChannels.size} 条通道可用"
+                            },
+                            onClick = onOpenAdvanced,
+                        )
+                    },
+                    CardItem("hideRecents") {
+                        SwitchPreference(
+                            checked = excludeRecents,
+                            onCheckedChange = { vm.setExcludeFromRecents(it) },
+                            title = "在多任务界面隐藏",
+                            summary = "从最近任务列表隐藏本应用卡片",
+                        )
+                    },
+                ),
             )
-            ArrowPreference(
-                title = "已学习 $learnedCount 条通知",
-                onClick = { onOpenStats("learned") },
-            )
-            ArrowPreference(
-                title = "导出诊断日志",
-                summary = when {
-                    diagExporting -> "导出中…"
-                    diagMsg != null -> diagMsg
-                    else -> "导出各模块最近 24 小时日志（ZIP）"
-                },
-                enabled = !diagExporting,
-                onClick = {
-                    diagMsg = null
-                    diagExporting = true
-                    diagScope.launch {
-                        val msg = runCatching {
-                            val file = io.github.vstory.hook.notifyfilter.diagnostics.DiagExporter.export(diagContext)
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                diagContext,
-                                "${diagContext.packageName}.fileprovider",
-                                file,
-                            )
-                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                // Dev 9：分模块 ZIP（text/plain 会让部分接收端把 zip 当文本改名/打不开）
-                                type = "application/zip"
-                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            diagContext.startActivity(
-                                android.content.Intent.createChooser(send, "分享诊断日志"),
-                            )
-                            "已导出: ${file.name}（${file.length() / 1024}KB）"
-                        }.getOrElse { "导出失败: ${it.message}" }
-                        diagExporting = false
-                        diagMsg = msg
+
+            // 厂商自启动提示：保持在「保活」组末尾（Mishka ExternalControl 的纯文本提示卡位置）
+            manufacturerHint?.let { hint ->
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp)
+                            .padding(bottom = 12.dp),
+                    ) {
+                        Text(
+                            text = hint,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        )
                     }
-                },
-            )
-            ArrowPreference(
-                title = "导出历史通知 CSV",
-                summary = when {
-                    csvExporting -> "导出中…"
-                    csvMsg != null -> csvMsg
-                    else -> "导出全部历史通知记录（CSV）"
-                },
-                enabled = !csvExporting,
-                onClick = {
-                    csvMsg = null
-                    csvExporting = true
-                    csvScope.launch {
-                        val msg = runCatching {
-                            val file = io.github.vstory.hook.notifyfilter.diagnostics.HistoryCsvExporter.export(diagContext)
-                            val uri = androidx.core.content.FileProvider.getUriForFile(
-                                diagContext,
-                                "${diagContext.packageName}.fileprovider",
-                                file,
-                            )
-                            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "text/csv"
-                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            diagContext.startActivity(
-                                android.content.Intent.createChooser(send, "分享历史通知 CSV"),
-                            )
-                            "已导出 ${file.name}（${file.length() / 1024}KB）"
-                        }.getOrElse { "导出失败: ${it.message}" }
-                        csvExporting = false
-                        csvMsg = msg
-                    }
-                },
-            )
-            // 保留天数（监控式循环：最新的顶掉 N 天前的）
-            SliderPreference(
-                value = retentionDraft.toFloat(),
-                onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
-                title = "历史保留天数",
-                summary = "仅对未学习通知生效，已学习的不受影响",
-                valueText = "$retentionDraft 天",
-                valueRange = 1f..30f,
-                steps = 28,
-                onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
-            )
-        }
+                }
+            }
 
-        SmallTitle("关于")
-        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
-            ArrowPreference(
-                title = "检查更新",
-                summary = if (checking) {
-                    "正在请求更新源…"
-                } else {
-                    "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}"
-                },
-                enabled = !checking,
-                onClick = { updateVm.checkUpdate() },
-            )
-            ArrowPreference(
-                title = "参考开源项目",
-                summary = "依赖与参考的开源项目",
-                onClick = { onOpenOpenSource() },
+            item { SmallTitle("关于") }
+            groupedCardItems(
+                keyPrefix = "settings_about",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("update") {
+                        val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
+                        ArrowPreference(
+                            title = "检查更新",
+                            summary = if (checking) {
+                                "正在请求更新源…"
+                            } else {
+                                "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}"
+                            },
+                            enabled = !checking,
+                            onClick = { updateVm.checkUpdate() },
+                        )
+                    },
+                    CardItem("openSource") {
+                        ArrowPreference(
+                            title = "参考开源项目",
+                            summary = "依赖与参考的开源项目",
+                            onClick = { onOpenOpenSource() },
+                        )
+                    },
+                ),
             )
         }
-        Spacer(Modifier.height(12.dp))
 
         when (val s = updateState) {
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking -> UpdateStatusDialog(
@@ -548,27 +641,6 @@ fun SettingsScreen(
                 }
             }
             io.github.vstory.hook.notifyfilter.update.UpdateState.Idle -> Unit
-        }
-
-        // ---- 高级保活执行结果弹窗 ----
-        execResult?.let { result ->
-            OverlayDialog(
-                show = true,
-                title = "保活命令执行结果",
-                onDismissRequest = { vm.dismissExecResult() },
-            ) {
-                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                    Text(result, style = MiuixTheme.textStyles.footnote1)
-                }
-                Spacer(Modifier.height(20.dp))
-                Row(Modifier.fillMaxWidth()) {
-                    TextButton(
-                        text = "完成",
-                        onClick = { vm.dismissExecResult() },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
         }
     }
 }

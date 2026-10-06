@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -277,7 +276,10 @@ fun MainScaffold() {
                 AdvancedPermissionScreen(onBack = { navigator.pop() })
             }
             entry<Route.AiModel>(swipeDismiss = swipeDismiss) {
-                AiModelScreen(onBack = { navigator.pop() })
+                AiModelScreen(
+                    onBack = { navigator.pop() },
+                    onOpenLearned = { navigator.push(Route.Stats("learned")) },
+                )
             }
             entry<Route.OpenSource>(swipeDismiss = swipeDismiss) {
                 OpenSourceScreen(onBack = { navigator.pop() })
@@ -317,7 +319,12 @@ fun MainScaffold() {
     }
 }
 
-/** 底栏 + 三个 Tab 的横向 Pager；二级页由 NavDisplay 独立渲染，不带底栏 */
+/**
+ * 底栏 + 三个 Tab 的横向 Pager；二级页由 NavDisplay 独立渲染，不带底栏。
+ *
+ * Tab 页各自持有 Scaffold + TopAppBar（与 Mishka 同构），本层因此**不**对整个 Pager 施加 padding，
+ * 只把底栏高度透传下去——否则内层 TopAppBar 会二次吃一遍状态栏 inset。
+ */
 @Composable
 private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     Scaffold(
@@ -334,24 +341,28 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
             }
         },
     ) { padding ->
+        val bottomPadding = padding.calculateBottomPadding()
         HorizontalPager(
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.fillMaxSize(),
             state = mainPagerState.pagerState,
             verticalAlignment = Alignment.Top,
             overscrollEffect = null,
         ) { page ->
             when (page) {
                 0 -> HistoryScreen(
+                    bottomPadding = bottomPadding,
                     onOpenAppPicker = {
                         // initial 已由 HistoryScreen 写入 AppPickerSession；结果同样经 result 回读
                         navigator.push(Route.AppPicker("筛选APP"))
                     },
                 )
                 1 -> RulesScreen(
+                    bottomPadding = bottomPadding,
                     onOpenRuleEdit = { navigator.push(Route.RuleEdit) },
                     onOpenAppPicker = { navigator.push(Route.AppPicker("白名单")) },
                 )
                 else -> SettingsScreen(
+                    bottomPadding = bottomPadding,
                     onOpenStats = { navigator.push(Route.Stats(it)) },
                     onOpenOpenSource = { navigator.push(Route.OpenSource) },
                     onOpenAdvanced = { navigator.push(Route.Advanced) },
