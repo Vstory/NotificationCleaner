@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.theme.ThemePaletteStyle
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
@@ -52,39 +53,83 @@ class SettingsRepository(private val context: Context) {
     /** 在系统多任务界面隐藏本 APP 的后台卡片（防误滑删除，切换后重建任务生效） */
     val excludeFromRecents: Flow<Boolean> = context.dataStore.data.map { it[keyHideRecents] ?: false }
 
-    // ---- 底栏形态：悬浮毛玻璃胶囊 / 贴底普通底栏（见 ui/MainActivity.kt 的两档分支）----
+    // ---- 外观与主题（外观与主题子页；底栏形态与样式同属这里的 ThemeConfig）----
     private val keyFloatingNavBar = booleanPreferencesKey("floating_nav_bar")
-
-    /**
-     * 底栏形态；默认 true = 悬浮毛玻璃胶囊（改动前的唯一形态）。
-     * 贴底档是兼容与可读性的兜底，默认值必须保持已发布形态，否则老用户升级后观感突变。
-     */
-    val floatingNavBar: Flow<Boolean> = context.dataStore.data.map { it[keyFloatingNavBar] ?: true }
-
-    suspend fun setFloatingNavBar(value: Boolean) {
-        context.dataStore.edit { it[keyFloatingNavBar] = value }
-    }
-
-    // ---- 悬浮底栏样式 / 底栏内容（与 Mishka 的导航设置一一对应）----
     private val keyFloatingNavBarStyle = stringPreferencesKey("floating_nav_bar_style")
     private val keyBottomBarMode = stringPreferencesKey("bottom_bar_mode")
+    private val keyThemeColorMode = intPreferencesKey("theme_color_mode")
+    private val keyThemePureBlack = booleanPreferencesKey("theme_pure_black")
+    private val keyThemeMonet = booleanPreferencesKey("theme_monet")
+    private val keyThemePaletteStyle = stringPreferencesKey("theme_palette_style")
+    private val keyThemeAccentColor = stringPreferencesKey("theme_accent_color")
+    private val keyThemeBlur = booleanPreferencesKey("theme_blur")
+    private val keyThemeBlurStyle = stringPreferencesKey("theme_blur_style")
+    private val keyThemeDensityScale = floatPreferencesKey("theme_density_scale")
+    private val keySwipeDismiss = booleanPreferencesKey("swipe_dismiss")
+    private val keyPredictiveBack = booleanPreferencesKey("predictive_back")
 
-    val floatingNavBarStyle: Flow<FloatingBottomBarStyle> = context.dataStore.data.map {
-        FloatingBottomBarStyle.fromStorage(
-            it[keyFloatingNavBarStyle] ?: FloatingBottomBarStyle.Miuix.storageValue,
+    /**
+     * 外观与主题的单一真相。
+     * 底栏默认 true = 悬浮毛玻璃胶囊（改动前的唯一形态）；贴底档是兼容与可读性的兜底，
+     * 默认值必须保持已发布形态，否则老用户升级后观感突变。
+     */
+    val themeConfig: Flow<ThemeConfig> = context.dataStore.data.map { p ->
+        ThemeConfig(
+            colorMode = p[keyThemeColorMode] ?: 0,
+            pureBlack = p[keyThemePureBlack] ?: false,
+            useMonet = p[keyThemeMonet] ?: false,
+            paletteStyle = themePaletteStyleFromStorage(
+                p[keyThemePaletteStyle] ?: ThemePaletteStyle.TonalSpot.name,
+            ),
+            accentColor = ThemeAccentColor.fromStorage(
+                p[keyThemeAccentColor] ?: ThemeAccentColor.Default.storageValue,
+            ),
+            blurEnabled = p[keyThemeBlur] ?: true,
+            topBarBlurStyle = TopBarBlurStyle.fromStorage(
+                p[keyThemeBlurStyle] ?: TopBarBlurStyle.Gaussian.storageValue,
+            ),
+            floatingBottomBar = p[keyFloatingNavBar] ?: true,
+            floatingBottomBarStyle = FloatingBottomBarStyle.fromStorage(
+                p[keyFloatingNavBarStyle] ?: FloatingBottomBarStyle.Miuix.storageValue,
+            ),
+            bottomBarMode = BottomBarMode.fromStorage(
+                p[keyBottomBarMode] ?: BottomBarMode.IconAndText.storageValue,
+            ),
+            densityScale = normalizeDensityScale(p[keyThemeDensityScale] ?: DefaultDensityScale),
         )
     }
 
-    suspend fun setFloatingNavBarStyle(value: FloatingBottomBarStyle) {
-        context.dataStore.edit { it[keyFloatingNavBarStyle] = value.storageValue }
+    suspend fun setThemeConfig(config: ThemeConfig) {
+        context.dataStore.edit {
+            it[keyThemeColorMode] = config.colorMode
+            it[keyThemePureBlack] = config.pureBlack
+            it[keyThemeMonet] = config.useMonet
+            it[keyThemePaletteStyle] = config.paletteStyle.name
+            it[keyThemeAccentColor] = config.accentColor.storageValue
+            it[keyThemeBlur] = config.blurEnabled
+            it[keyThemeBlurStyle] = config.topBarBlurStyle.storageValue
+            it[keyFloatingNavBar] = config.floatingBottomBar
+            it[keyFloatingNavBarStyle] = config.floatingBottomBarStyle.storageValue
+            it[keyBottomBarMode] = config.bottomBarMode.storageValue
+            it[keyThemeDensityScale] = normalizeDensityScale(config.densityScale)
+        }
     }
 
-    val bottomBarMode: Flow<BottomBarMode> = context.dataStore.data.map {
-        BottomBarMode.fromStorage(it[keyBottomBarMode] ?: BottomBarMode.IconAndText.storageValue)
+    /** 横移返回手势，默认启用 */
+    val swipeDismiss: Flow<Boolean> = context.dataStore.data.map { it[keySwipeDismiss] ?: true }
+
+    suspend fun setSwipeDismiss(value: Boolean) {
+        context.dataStore.edit { it[keySwipeDismiss] = value }
     }
 
-    suspend fun setBottomBarMode(value: BottomBarMode) {
-        context.dataStore.edit { it[keyBottomBarMode] = value.storageValue }
+    /**
+     * 预测性返回手势；默认 true = 保持 targetSdk 33+ 的出厂行为（manifest 未声明
+     * enableOnBackInvokedCallback 时系统默认开启）。关掉才需要改写 ApplicationInfo 并重建 Activity。
+     */
+    val predictiveBack: Flow<Boolean> = context.dataStore.data.map { it[keyPredictiveBack] ?: true }
+
+    suspend fun setPredictiveBack(value: Boolean) {
+        context.dataStore.edit { it[keyPredictiveBack] = value }
     }
 
     /** 累计拦截数（常驻通知展示）：AI 拦截 / 用户规则拦截 */

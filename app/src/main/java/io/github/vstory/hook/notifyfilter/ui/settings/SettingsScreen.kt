@@ -1,10 +1,5 @@
 package io.github.vstory.hook.notifyfilter.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,11 +21,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,9 +34,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.ServiceLocator
-import io.github.vstory.hook.notifyfilter.data.BottomBarMode
-import io.github.vstory.hook.notifyfilter.data.FloatingBottomBarStyle
 import io.github.vstory.hook.notifyfilter.data.SettingsRepository
 import io.github.vstory.hook.notifyfilter.data.db.NotificationDao
 import io.github.vstory.hook.notifyfilter.notify.KeepAliveStatus
@@ -70,7 +64,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -84,7 +77,6 @@ class SettingsViewModel(
     val threshold = settings.threshold.stateIn(viewModelScope, SharingStarted.Eagerly, 0.8f)
     val interceptMode = settings.interceptMode.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val excludeFromRecents = settings.excludeFromRecents.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    val floatingNavBar = settings.floatingNavBar.stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val filteredCount = dao.filteredCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val learnedCount = dao.learnedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
@@ -139,23 +131,6 @@ class SettingsViewModel(
 
     fun setExcludeFromRecents(v: Boolean) {
         viewModelScope.launch { settings.setExcludeFromRecents(v) }
-    }
-
-    fun setFloatingNavBar(v: Boolean) {
-        viewModelScope.launch { settings.setFloatingNavBar(v) }
-    }
-
-    val floatingNavBarStyle = settings.floatingNavBarStyle
-        .stateIn(viewModelScope, SharingStarted.Eagerly, FloatingBottomBarStyle.Miuix)
-    val bottomBarMode = settings.bottomBarMode
-        .stateIn(viewModelScope, SharingStarted.Eagerly, BottomBarMode.IconAndText)
-
-    fun setFloatingNavBarStyle(v: FloatingBottomBarStyle) {
-        viewModelScope.launch { settings.setFloatingNavBarStyle(v) }
-    }
-
-    fun setBottomBarMode(v: BottomBarMode) {
-        viewModelScope.launch { settings.setBottomBarMode(v) }
     }
 
     // ---- LSPosed 框架服务状态（Dev 7：libxposed service 绑定 + 作用域）----
@@ -288,21 +263,13 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit = {},
     onOpenAdvanced: () -> Unit = {},
     onOpenAiModel: () -> Unit = {},
+    onOpenTheme: () -> Unit = {},
     bottomPadding: Dp = 0.dp,
     vm: SettingsViewModel = viewModel(factory = settingsVmFactory()),
 ) {
     val threshold by vm.threshold.collectAsState()
     val intercept by vm.interceptMode.collectAsState()
     val excludeRecents by vm.excludeFromRecents.collectAsState()
-    val floatingNavBar by vm.floatingNavBar.collectAsState()
-    val floatingBarStyle by vm.floatingNavBarStyle.collectAsState()
-    val bottomBarMode by vm.bottomBarMode.collectAsState()
-    val floatingBarStyles = FloatingBottomBarStyle.entries.toList()
-    val floatingBarStyleItems = listOf("Miuix", "iOS 风格（液态玻璃）")
-    val styleIndex = floatingBarStyles.indexOf(floatingBarStyle).coerceAtLeast(0)
-    val bottomBarModes = BottomBarMode.entries.toList()
-    val bottomBarModeItems = listOf("图标与文字", "仅图标")
-    val modeIndex = bottomBarModes.indexOf(bottomBarMode).coerceAtLeast(0)
     val filteredCount by vm.filteredCount.collectAsState()
     val learnedCount by vm.learnedCount.collectAsState()
     val keepAlive by vm.keepAlive.collectAsState()
@@ -334,6 +301,8 @@ fun SettingsScreen(
     }
 
     val diagContext = LocalContext.current
+    val shareDiagTitle = stringResource(R.string.settings_share_diag)
+    val shareCsvTitle = stringResource(R.string.settings_share_csv)
     val diagScope = rememberCoroutineScope()
     var diagExporting by remember { mutableStateOf(false) }
     var diagMsg by remember { mutableStateOf<String?>(null) }
@@ -354,7 +323,7 @@ fun SettingsScreen(
         topBar = {
             BlurredBar(backdrop = backdrop, blurActive = blurActive) {
                 TopAppBar(
-                    title = "设置",
+                    title = stringResource(R.string.settings_title),
                     color = barColor,
                     scrollBehavior = scrollBehavior,
                 )
@@ -373,7 +342,22 @@ fun SettingsScreen(
                 bottom = bottomPadding,
             ),
         ) {
-            item { SmallTitle("过滤") }
+            item { SmallTitle(stringResource(R.string.settings_group_general)) }
+            groupedCardItems(
+                keyPrefix = "settings_general",
+                outerBottomPadding = 12.dp,
+                items = listOf(
+                    CardItem("theme") {
+                        ArrowPreference(
+                            title = stringResource(R.string.settings_theme_title),
+                            summary = stringResource(R.string.settings_theme_summary),
+                            onClick = onOpenTheme,
+                        )
+                    },
+                ),
+            )
+
+            item { SmallTitle(stringResource(R.string.settings_group_filter)) }
             groupedCardItems(
                 keyPrefix = "settings_filter",
                 outerBottomPadding = 12.dp,
@@ -382,15 +366,15 @@ fun SettingsScreen(
                         SwitchPreference(
                             checked = intercept,
                             onCheckedChange = { vm.setInterceptMode(it) },
-                            title = "拦截模式",
-                            summary = "关闭后仅标记不拦截，便于观察误杀",
+                            title = stringResource(R.string.settings_intercept),
+                            summary = stringResource(R.string.settings_intercept_summary),
                         )
                     },
                     CardItem("threshold") {
                         SliderPreference(
                             value = thresholdDraft,
                             onValueChange = { thresholdDraft = it },
-                            title = "过滤阈值",
+                            title = stringResource(R.string.settings_threshold),
                             valueText = "%.2f".format(thresholdDraft),
                             valueRange = 0.5f..1.0f,
                             steps = 9,
@@ -400,70 +384,29 @@ fun SettingsScreen(
                 ),
             )
 
-            item { SmallTitle("底部导航栏") }
-            groupedCardItems(
-                keyPrefix = "settings_nav",
-                outerBottomPadding = 12.dp,
-                items = listOf(
-                    CardItem("floating") {
-                        SwitchPreference(
-                            checked = floatingNavBar,
-                            onCheckedChange = { vm.setFloatingNavBar(it) },
-                            title = "悬浮底栏",
-                            summary = "在手机布局中使用悬浮底部导航栏",
-                        )
-                        // 样式仅在悬浮档下有意义，收起时连同分组一起淡出（贴底档的形态由「底栏选项」决定）
-                        AnimatedVisibility(
-                            visible = floatingNavBar,
-                            enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                            exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
-                        ) {
-                            OverlayDropdownPreference(
-                                title = "悬浮底栏样式",
-                                summary = floatingBarStyleItems[styleIndex],
-                                items = floatingBarStyleItems,
-                                selectedIndex = styleIndex,
-                                onSelectedIndexChange = {
-                                    vm.setFloatingNavBarStyle(floatingBarStyles[it])
-                                },
-                            )
-                        }
-                    },
-                    CardItem("mode") {
-                        OverlayDropdownPreference(
-                            title = "底栏选项",
-                            summary = bottomBarModeItems[modeIndex],
-                            items = bottomBarModeItems,
-                            selectedIndex = modeIndex,
-                            onSelectedIndexChange = { vm.setBottomBarMode(bottomBarModes[it]) },
-                        )
-                    },
-                ),
-            )
-
-            item { SmallTitle("模型与数据") }
+            item { SmallTitle(stringResource(R.string.settings_group_model)) }
             groupedCardItems(
                 keyPrefix = "settings_model_data",
                 outerBottomPadding = 12.dp,
                 items = listOf(
                     CardItem("aiModel") {
                         ArrowPreference(
-                            title = "AI 模型",
-                            summary = "基线 NSPM v2",
+                            title = stringResource(R.string.settings_ai_model),
+                            summary = stringResource(R.string.settings_ai_model_summary),
                             onClick = onOpenAiModel,
                         )
                     },
                     CardItem("filtered") {
                         ArrowPreference(
-                            title = "已过滤通知",
-                            summary = "$filteredCount 条",
+                            title = stringResource(R.string.settings_filtered_notifications),
+                            summary = stringResource(R.string.settings_count_items, filteredCount),
                             onClick = { onOpenStats("filtered") },
                         )
                     },
                     CardItem("learned") {
                         ArrowPreference(
-                            title = "已学习通知",
-                            summary = "$learnedCount 条",
+                            title = stringResource(R.string.settings_learned_notifications),
+                            summary = stringResource(R.string.settings_count_items, learnedCount),
                             onClick = { onOpenStats("learned") },
                         )
                     },
@@ -471,9 +414,9 @@ fun SettingsScreen(
                         SliderPreference(
                             value = retentionDraft.toFloat(),
                             onValueChange = { retentionDraft = it.toInt().coerceIn(1, 30) },
-                            title = "历史保留天数",
-                            summary = "仅对未学习通知生效，已学习的不受影响",
-                            valueText = "$retentionDraft 天",
+                            title = stringResource(R.string.settings_retention),
+                            summary = stringResource(R.string.settings_retention_summary),
+                            valueText = stringResource(R.string.settings_retention_days, retentionDraft),
                             valueRange = 1f..30f,
                             steps = 28,
                             onValueChangeFinished = { vm.setHistoryRetentionDays(retentionDraft) },
@@ -481,11 +424,11 @@ fun SettingsScreen(
                     },
                     CardItem("diagLog") {
                         ArrowPreference(
-                            title = "导出诊断日志",
+                            title = stringResource(R.string.settings_export_diag),
                             summary = when {
-                                diagExporting -> "导出中…"
+                                diagExporting -> stringResource(R.string.settings_exporting)
                                 diagMsg != null -> diagMsg
-                                else -> "导出各模块最近 24 小时日志（ZIP）"
+                                else -> stringResource(R.string.settings_export_diag_summary)
                             },
                             enabled = !diagExporting,
                             onClick = {
@@ -506,10 +449,17 @@ fun SettingsScreen(
                                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
                                         diagContext.startActivity(
-                                            android.content.Intent.createChooser(send, "分享诊断日志"),
+                                            android.content.Intent.createChooser(
+                                                send,
+                                                shareDiagTitle,
+                                            ),
                                         )
-                                        "已导出: ${file.name}（${file.length() / 1024}KB）"
-                                    }.getOrElse { "导出失败: ${it.message}" }
+                                        diagContext.getString(
+                                            R.string.settings_exported,
+                                            file.name,
+                                            file.length() / 1024,
+                                        )
+                                    }.getOrElse { diagContext.getString(R.string.settings_export_failed, it.message ?: "") }
                                     diagExporting = false
                                     diagMsg = msg
                                 }
@@ -518,11 +468,11 @@ fun SettingsScreen(
                     },
                     CardItem("csvExport") {
                         ArrowPreference(
-                            title = "导出历史通知 CSV",
+                            title = stringResource(R.string.settings_export_csv),
                             summary = when {
-                                csvExporting -> "导出中…"
+                                csvExporting -> stringResource(R.string.settings_exporting)
                                 csvMsg != null -> csvMsg
-                                else -> "导出全部历史通知记录（CSV）"
+                                else -> stringResource(R.string.settings_export_csv_summary)
                             },
                             enabled = !csvExporting,
                             onClick = {
@@ -542,10 +492,14 @@ fun SettingsScreen(
                                             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
                                         diagContext.startActivity(
-                                            android.content.Intent.createChooser(send, "分享历史通知 CSV"),
+                                            android.content.Intent.createChooser(send, shareCsvTitle),
                                         )
-                                        "已导出 ${file.name}（${file.length() / 1024}KB）"
-                                    }.getOrElse { "导出失败: ${it.message}" }
+                                        diagContext.getString(
+                                            R.string.settings_exported_csv,
+                                            file.name,
+                                            file.length() / 1024,
+                                        )
+                                    }.getOrElse { diagContext.getString(R.string.settings_export_failed, it.message ?: "") }
                                     csvExporting = false
                                     csvMsg = msg
                                 }
@@ -555,32 +509,40 @@ fun SettingsScreen(
                 ),
             )
 
-            item { SmallTitle("保活") }
+            item { SmallTitle(stringResource(R.string.settings_group_keepalive)) }
             groupedCardItems(
                 keyPrefix = "settings_keepalive",
                 outerBottomPadding = 12.dp,
                 items = listOf(
                     CardItem("listener") {
                         ArrowPreference(
-                            title = "通知监听权限",
-                            summary = if (keepAlive.listenerEnabled) "已授权" else "未授权，点击前往授权",
+                            title = stringResource(R.string.settings_listener_permission),
+                            summary = if (keepAlive.listenerEnabled) {
+                                stringResource(R.string.settings_granted)
+                            } else {
+                                stringResource(R.string.settings_not_granted)
+                            },
                             onClick = { vm.openListenerSettings() },
                         )
                     },
                     CardItem("battery") {
                         ArrowPreference(
-                            title = "电池优化白名单",
-                            summary = if (keepAlive.ignoringBattery) "已加入白名单" else "未加入，点击前往设置",
+                            title = stringResource(R.string.settings_battery_whitelist),
+                            summary = if (keepAlive.ignoringBattery) {
+                                stringResource(R.string.settings_whitelisted)
+                            } else {
+                                stringResource(R.string.settings_not_whitelisted)
+                            },
                             onClick = { vm.requestIgnoreBattery() },
                         )
                     },
                     CardItem("advanced") {
                         ArrowPreference(
-                            title = "保活通道与修复",
+                            title = stringResource(R.string.settings_keepalive_channels),
                             summary = if (availableChannels.isEmpty()) {
-                                "未启用，点击配置保活通道"
+                                stringResource(R.string.settings_keepalive_channels_none)
                             } else {
-                                "${availableChannels.size} 条通道可用"
+                                stringResource(R.string.settings_keepalive_channels_count, availableChannels.size)
                             },
                             onClick = onOpenAdvanced,
                         )
@@ -589,8 +551,8 @@ fun SettingsScreen(
                         SwitchPreference(
                             checked = excludeRecents,
                             onCheckedChange = { vm.setExcludeFromRecents(it) },
-                            title = "在多任务界面隐藏",
-                            summary = "从最近任务列表隐藏本应用卡片",
+                            title = stringResource(R.string.settings_hide_recents),
+                            summary = stringResource(R.string.settings_hide_recents_summary),
                         )
                     },
                 ),
@@ -615,7 +577,7 @@ fun SettingsScreen(
                 }
             }
 
-            item { SmallTitle("关于") }
+            item { SmallTitle(stringResource(R.string.settings_group_about)) }
             groupedCardItems(
                 keyPrefix = "settings_about",
                 outerBottomPadding = 12.dp,
@@ -623,11 +585,14 @@ fun SettingsScreen(
                     CardItem("update") {
                         val checking = updateState is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking
                         ArrowPreference(
-                            title = "检查更新",
+                            title = stringResource(R.string.settings_check_update),
                             summary = if (checking) {
-                                "正在请求更新源…"
+                                stringResource(R.string.settings_checking_update)
                             } else {
-                                "当前版本 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME}"
+                                stringResource(
+                                    R.string.settings_current_version,
+                                    io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME,
+                                )
                             },
                             enabled = !checking,
                             onClick = { updateVm.checkUpdate() },
@@ -635,8 +600,9 @@ fun SettingsScreen(
                     },
                     CardItem("about") {
                         ArrowPreference(
-                            title = "关于",
-                            summary = "NotifyFilter v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME} (${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_CODE})",
+                            title = stringResource(R.string.settings_about),
+                            summary = "NotifyFilter v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME} " +
+                                "(${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_CODE})",
                             onClick = { onOpenAbout() },
                         )
                     },
@@ -646,28 +612,41 @@ fun SettingsScreen(
 
         when (val s = updateState) {
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Checking -> UpdateStatusDialog(
-                title = "正在检查更新…", text = "正在请求更新源",
+                title = stringResource(R.string.settings_update_checking_title),
+                text = stringResource(R.string.settings_update_requesting),
                 confirm = null, onDismiss = { updateVm.reset() },
             )
             is io.github.vstory.hook.notifyfilter.update.UpdateState.UpToDate -> UpdateStatusDialog(
-                title = "已是最新版本", text = "当前 v${io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME} 已是最新",
-                confirm = "知道了", onDismiss = { updateVm.reset() },
+                title = stringResource(R.string.settings_update_up_to_date_title),
+                text = stringResource(
+                    R.string.settings_update_up_to_date_text,
+                    io.github.vstory.hook.notifyfilter.BuildConfig.VERSION_NAME,
+                ),
+                confirm = stringResource(R.string.settings_update_got_it), onDismiss = { updateVm.reset() },
             )
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Error -> UpdateStatusDialog(
-                title = "更新失败", text = s.message, confirm = "知道了", onDismiss = { updateVm.reset() },
+                title = stringResource(R.string.settings_update_failed),
+                text = s.message,
+                confirm = stringResource(R.string.settings_update_got_it),
+                onDismiss = { updateVm.reset() },
             )
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Available -> OverlayDialog(
                 show = true,
-                title = "发现新版本 v${s.release.versionName}",
+                title = stringResource(R.string.settings_update_available, s.release.versionName),
                 onDismissRequest = { updateVm.reset() },
             ) {
                 Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                    Text(s.release.notes.ifBlank { "无更新说明" }, style = MiuixTheme.textStyles.body2)
+                    Text(
+                        text = s.release.notes.ifBlank {
+                            stringResource(R.string.settings_update_no_notes)
+                        },
+                        style = MiuixTheme.textStyles.body2,
+                    )
                 }
                 Spacer(Modifier.height(20.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TextButton(
-                        text = "稍后再说",
+                        text = stringResource(R.string.settings_update_later),
                         onClick = { updateVm.reset() },
                         modifier = Modifier.weight(1f),
                     )
@@ -675,12 +654,12 @@ fun SettingsScreen(
                         onClick = { updateVm.startDownload(s.release) },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) { Text("立即更新", style = MiuixTheme.textStyles.button) }
+                    ) { Text(stringResource(R.string.settings_update_now), style = MiuixTheme.textStyles.button) }
                 }
             }
             is io.github.vstory.hook.notifyfilter.update.UpdateState.Downloading -> OverlayDialog(
                 show = true,
-                title = "正在下载 v${s.release.versionName}",
+                title = stringResource(R.string.settings_update_downloading, s.release.versionName),
                 onDismissRequest = {},
             ) {
                 LinearProgressIndicator(
@@ -694,19 +673,19 @@ fun SettingsScreen(
                     Button(
                         onClick = { updateVm.cancelDownload() },
                         modifier = Modifier.weight(1f),
-                    ) { Text("取消", style = MiuixTheme.textStyles.button) }
+                    ) { Text(stringResource(R.string.common_cancel), style = MiuixTheme.textStyles.button) }
                 }
             }
             is io.github.vstory.hook.notifyfilter.update.UpdateState.ReadyToInstall -> OverlayDialog(
                 show = true,
-                title = "下载完成",
+                title = stringResource(R.string.settings_update_done),
                 onDismissRequest = { updateVm.reset() },
             ) {
-                Text("点击「安装」打开系统安装器升级到 v${s.release.versionName}。")
+                Text(stringResource(R.string.settings_update_done_text, s.release.versionName))
                 Spacer(Modifier.height(20.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     TextButton(
-                        text = "稍后",
+                        text = stringResource(R.string.settings_update_later),
                         onClick = { updateVm.reset() },
                         modifier = Modifier.weight(1f),
                     )
@@ -714,7 +693,7 @@ fun SettingsScreen(
                         onClick = { updateVm.install(s.release, s.file) },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) { Text("安装", style = MiuixTheme.textStyles.button) }
+                    ) { Text(stringResource(R.string.settings_update_install), style = MiuixTheme.textStyles.button) }
                 }
             }
             io.github.vstory.hook.notifyfilter.update.UpdateState.Idle -> Unit
@@ -733,7 +712,7 @@ private fun UpdateStatusDialog(title: String, text: String, confirm: String?, on
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth()) {
             TextButton(
-                text = confirm ?: "关闭",
+                text = confirm ?: stringResource(R.string.common_close),
                 onClick = onDismiss,
                 modifier = Modifier.weight(1f),
             )

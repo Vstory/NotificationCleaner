@@ -175,6 +175,9 @@ dependencies {
     // APP 侧框架服务（1.2.1）：模块激活检测 + delta 远程文件通道
     implementation("io.github.libxposed:service:102.0.0")
 
+    // 预测性返回开关要改写 ApplicationInfo 的 hidden 方法，需先豁免 hidden API 检查
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }

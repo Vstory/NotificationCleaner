@@ -21,7 +21,6 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.defaultMinSize
@@ -38,18 +37,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
+import io.github.vstory.hook.notifyfilter.App
+import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.data.BottomBarMode
 import io.github.vstory.hook.notifyfilter.data.FloatingBottomBarStyle
+import io.github.vstory.hook.notifyfilter.data.ThemeConfig
 import io.github.vstory.hook.notifyfilter.notify.CleanerListenerService
 import io.github.vstory.hook.notifyfilter.ui.component.blur.BlurredBar
 import io.github.vstory.hook.notifyfilter.ui.component.blur.rememberBlurBackdrop
 import io.github.vstory.hook.notifyfilter.ui.component.liquid.IosLiquidGlassNavigationBar
 import io.github.vstory.hook.notifyfilter.ui.history.HistoryScreen
+import io.github.vstory.hook.notifyfilter.ui.theme.LocalAppDarkMode
 import io.github.vstory.hook.notifyfilter.ui.nav.LocalNavigator
 import io.github.vstory.hook.notifyfilter.ui.nav.MainPagerState
 import io.github.vstory.hook.notifyfilter.ui.nav.Navigator
@@ -67,6 +71,7 @@ import io.github.vstory.hook.notifyfilter.ui.settings.AdvancedPermissionScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.AiModelScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.SettingsScreen
 import io.github.vstory.hook.notifyfilter.ui.settings.StatsDetailScreen
+import io.github.vstory.hook.notifyfilter.ui.settings.ThemeSettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -137,7 +142,17 @@ class MainActivity : ComponentActivity() {
         //    ⇒ API 35+ 上它反而把遮罩打开：浅色下导航栏区域泛白，悬浮底栏下方多出一条色带。
         //    全屏内容自己让位到导航栏之上，不需要系统这层保护色。
         window.isNavigationBarContrastEnforced = false
-        setContent { AppTheme { AppRoot() } }
+        setContent {
+            val themeConfig by ServiceLocator.settings.themeConfig.collectAsState(initial = ThemeConfig())
+            AppTheme(themeConfig) {
+                AppRoot(
+                    themeConfig = themeConfig,
+                    onThemeConfigChange = { next ->
+                        ServiceLocator.appScope.launch { ServiceLocator.settings.setThemeConfig(next) }
+                    },
+                )
+            }
+        }
         // 入口检查：图标/保活通知进入都会走 onCreate 或 onNewIntent
         refreshPermissionState()
         maybeRequestNotifPermission()
@@ -223,7 +238,10 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun AppRoot() {
+    private fun AppRoot(
+        themeConfig: ThemeConfig,
+        onThemeConfigChange: (ThemeConfig) -> Unit,
+    ) {
         // 权限初始化流程（1.1.8）：首次启动（含老版本升级后首次打开 1.1.8）走一遍。
         // 状态提升到 Activity 字段——onCreate 里的「失效提醒」判定也要用同一份读取结果
         when (onboardingDone) {
@@ -235,7 +253,22 @@ class MainActivity : ComponentActivity() {
                 },
             )
             else -> {
-                MainScaffold()
+                MainScaffold(
+                    themeConfig = themeConfig,
+                    onThemeConfigChange = onThemeConfigChange,
+                    onPredictiveBackChange = if (android.os.Build.VERSION.SDK_INT >= 34) {
+                        { enabled ->
+                            // 同步落盘：recreate 后新实例立刻读回，异步写会让开关回弹
+                            kotlinx.coroutines.runBlocking {
+                                ServiceLocator.settings.setPredictiveBack(enabled)
+                            }
+                            App.setEnableOnBackInvokedCallback(applicationInfo, enabled)
+                            recreate()
+                        }
+                    } else {
+                        null
+                    },
+                )
                 // 进入应用自动检查更新（1.1.8）：有更新弹窗，无更新静默
                 val updateVm: io.github.vstory.hook.notifyfilter.update.UpdateViewModel =
                     viewModel(key = "updateEntry", factory = viewModelFactory {
@@ -279,25 +312,37 @@ class MainActivity : ComponentActivity() {
 
 private data class Tab(val label: String, val icon: ImageVector)
 
-private val tabs = listOf(
-    Tab("主页", MiuixIcons.Home),
-    Tab("规则", MiuixIcons.ListView),
-    Tab("设置", MiuixIcons.Settings),
+@Composable
+private fun navigationTabs(): List<Tab> = listOf(
+    Tab(stringResource(R.string.nav_home), MiuixIcons.Home),
+    Tab(stringResource(R.string.nav_rules), MiuixIcons.ListView),
+    Tab(stringResource(R.string.nav_settings), MiuixIcons.Settings),
 )
 
 @Composable
-fun MainScaffold() {
+fun MainScaffold(
+    themeConfig: ThemeConfig,
+    onThemeConfigChange: (ThemeConfig) -> Unit,
+    onPredictiveBackChange: ((Boolean) -> Unit)? = null,
+) {
     val backStack = rememberNavBackStack<Route>(Route.Main)
     val navigator = remember { Navigator(backStack) }
+    val tabs = navigationTabs()
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val mainPagerState = rememberMainPagerState(pagerState)
 
     // 横移返回方向取物理方向（不随布局方向镜像），RTL 下必须反过来
-    val swipeDismiss = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
+    val swipeBackDirection = if (LocalLayoutDirection.current == LayoutDirection.Rtl) {
         NavSwipeDirection.RightToLeft
     } else {
         NavSwipeDirection.LeftToRight
     }
+    val storedSwipeDismiss by ServiceLocator.settings.swipeDismiss.collectAsState(initial = true)
+    var swipeDismissEnabled by remember(storedSwipeDismiss) { mutableStateOf(storedSwipeDismiss) }
+    val swipeDismiss = if (swipeDismissEnabled) swipeBackDirection else null
+
+    val storedPredictiveBack by ServiceLocator.settings.predictiveBack.collectAsState(initial = true)
+    var predictiveBackEnabled by remember(storedPredictiveBack) { mutableStateOf(storedPredictiveBack) }
 
     CompositionLocalProvider(LocalNavigator provides navigator) {
         NavDisplay(
@@ -308,7 +353,12 @@ fun MainScaffold() {
             ),
         ) {
             entry<Route.Main>(swipeDismiss = swipeDismiss) {
-                MainPage(mainPagerState = mainPagerState, navigator = navigator)
+                MainPage(
+                    mainPagerState = mainPagerState,
+                    navigator = navigator,
+                    tabs = tabs,
+                    themeConfig = themeConfig,
+                )
             }
             entry<Route.Advanced>(swipeDismiss = swipeDismiss) {
                 AdvancedPermissionScreen(onBack = { navigator.pop() })
@@ -317,6 +367,25 @@ fun MainScaffold() {
                 AiModelScreen(
                     onBack = { navigator.pop() },
                     onOpenLearned = { navigator.push(Route.Stats("learned")) },
+                )
+            }
+            entry<Route.ThemeSettings>(swipeDismiss = swipeDismiss) {
+                ThemeSettingsScreen(
+                    themeConfig = themeConfig,
+                    onThemeConfigChange = onThemeConfigChange,
+                    predictiveBackEnabled = predictiveBackEnabled,
+                    onPredictiveBackChange = onPredictiveBackChange?.let { apply ->
+                        { enabled ->
+                            predictiveBackEnabled = enabled
+                            apply(enabled)
+                        }
+                    },
+                    swipeDismissEnabled = swipeDismissEnabled,
+                    onSwipeDismissChange = { enabled ->
+                        swipeDismissEnabled = enabled
+                        ServiceLocator.appScope.launch { ServiceLocator.settings.setSwipeDismiss(enabled) }
+                    },
+                    onBack = { navigator.pop() },
                 )
             }
             entry<Route.About>(swipeDismiss = swipeDismiss) {
@@ -368,14 +437,17 @@ fun MainScaffold() {
  * 只把底栏高度透传下去——否则内层 TopAppBar 会二次吃一遍状态栏 inset。
  */
 @Composable
-private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
-    val floatingNavBar by ServiceLocator.settings.floatingNavBar.collectAsState(initial = true)
-    val floatingBarStyle by ServiceLocator.settings.floatingNavBarStyle
-        .collectAsState(initial = FloatingBottomBarStyle.Miuix)
-    val bottomBarMode by ServiceLocator.settings.bottomBarMode
-        .collectAsState(initial = BottomBarMode.IconAndText)
+private fun MainPage(
+    mainPagerState: MainPagerState,
+    navigator: Navigator,
+    tabs: List<Tab>,
+    themeConfig: ThemeConfig,
+) {
+    val floatingNavBar = themeConfig.floatingBottomBar
+    val floatingBarStyle = themeConfig.floatingBottomBarStyle
+    val bottomBarMode = themeConfig.bottomBarMode
 
-    val bottomBarBackdrop = rememberBlurBackdrop()
+    val bottomBarBackdrop = rememberBlurBackdrop(themeConfig.blurEnabled)
     val bottomBarBlurActive = bottomBarBackdrop != null
     val barColor = if (bottomBarBlurActive) Color.Transparent else MiuixTheme.colorScheme.surface
     val floatingBarColor = if (bottomBarBlurActive) {
@@ -385,7 +457,7 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
     }
     val floatingPillRadius = 50.dp
     val floatingBarShape = RoundedCornerShape(floatingPillRadius)
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalAppDarkMode.current
     val floatingHighlight = remember(isDark) {
         if (isDark) Highlight.GlassStrokeMiddleDark else Highlight.GlassStrokeMiddleLight
     }
@@ -488,6 +560,7 @@ private fun MainPage(mainPagerState: MainPagerState, navigator: Navigator) {
                     onOpenAbout = { navigator.push(Route.About) },
                     onOpenAdvanced = { navigator.push(Route.Advanced) },
                     onOpenAiModel = { navigator.push(Route.AiModel) },
+                    onOpenTheme = { navigator.push(Route.ThemeSettings) },
                 )
             }
         }

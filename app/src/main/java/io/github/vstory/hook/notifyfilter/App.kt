@@ -10,6 +10,7 @@ import io.github.vstory.hook.notifyfilter.notify.KeepAliveManager
 import io.github.vstory.hook.notifyfilter.notify.RuleEngine
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class App : Application(), XposedServiceHelper.OnServiceListener {
@@ -33,6 +34,12 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         }
         // 1.2.2：后台定期更新检查（6 小时，有网络约束），有新版本发通知提醒
         runCatching { io.github.vstory.hook.notifyfilter.update.UpdateWorker.schedule(this) }
+        // 预测性返回开关（外观与主题子页）：manifest 未声明 enableOnBackInvokedCallback 时
+        // targetSdk 33+ 默认开启，关掉必须改写 ApplicationInfo，且要在任何 Activity 创建前生效
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            val predictiveBack = kotlinx.coroutines.runBlocking { ServiceLocator.settings.predictiveBack.first() }
+            setEnableOnBackInvokedCallback(applicationInfo, predictiveBack)
+        }
     }
 
     override fun onServiceBind(service: XposedService) {
@@ -44,6 +51,26 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
     override fun onServiceDied(service: XposedService) {
         io.github.vstory.hook.notifyfilter.keepalive.LspServiceDetector.onServiceDied()
         ServiceLocator.onXposedServiceDied()
+    }
+
+    companion object {
+        /**
+         * 切换预测性返回动画。`setEnableOnBackInvokedCallback` 是 hidden API，
+         * 先豁免检查再反射调用，否则在 targetSdk 33+ 上直接抛 NoSuchMethodException。
+         */
+        fun setEnableOnBackInvokedCallback(appInfo: android.content.pm.ApplicationInfo, enabled: Boolean) {
+            runCatching {
+                org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions(
+                    "Landroid/content/pm/ApplicationInfo;->setEnableOnBackInvokedCallback",
+                )
+                val method = android.content.pm.ApplicationInfo::class.java.getDeclaredMethod(
+                    "setEnableOnBackInvokedCallback",
+                    Boolean::class.javaPrimitiveType,
+                )
+                method.isAccessible = true
+                method.invoke(appInfo, enabled)
+            }
+        }
     }
 }
 
