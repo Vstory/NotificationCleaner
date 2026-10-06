@@ -241,8 +241,8 @@ private fun AboutContent(
                         scaleY = 1 - (p * 0.05f)
                     },
             ) {
-                // requiredSize 比父框大，logo 只露中心一块。160dp 是按本项目 logo 在 viewport 里
-                // 的占比（盾牌高 52/108）反推的：Mishka 的 250dp 对应它自己更扁的 logo，直接套会裁掉盾牌上下两端
+                // requiredSize 比父框大，logo 只露中心一块。160dp 是按自适应图标前景里图形的占比
+                // （高约 200/432）反推的：Mishka 的 250dp 对应它自己更扁的 logo，直接套会裁掉上下两端
                 Image(
                     modifier = Modifier
                         .requiredSize(160.dp)
@@ -258,7 +258,7 @@ private fun AboutContent(
                                 )
                             } else Modifier
                         ),
-                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    painter = painterResource(R.mipmap.ic_launcher_foreground),
                     colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.onBackground),
                     contentDescription = "icon",
                 )
