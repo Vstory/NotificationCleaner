@@ -125,6 +125,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // ⚠️ 必须显式关掉这层遮罩。enableEdgeToEdge 的默认 navigationBarStyle 是
+        //    SystemBarStyle.auto（nightMode = MODE_NIGHT_AUTO），而 EdgeToEdgeApi35 里是
+        //    `isNavigationBarContrastEnforced = (nightMode == MODE_NIGHT_AUTO)`
+        //    ⇒ API 35+ 上它反而把遮罩打开：浅色下导航栏区域泛白，悬浮底栏下方多出一条色带。
+        //    全屏内容自己让位到导航栏之上，不需要系统这层保护色。
+        window.isNavigationBarContrastEnforced = false
         setContent { AppTheme { AppRoot() } }
         // 入口检查：图标/保活通知进入都会走 onCreate 或 onNewIntent
         refreshPermissionState()
