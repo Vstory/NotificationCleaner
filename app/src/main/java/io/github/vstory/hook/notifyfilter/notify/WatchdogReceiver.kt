@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
+import io.github.vstory.hook.notifyfilter.R
 import kotlinx.coroutines.launch
 
 /**
@@ -105,7 +106,7 @@ class WatchdogReceiver : BroadcastReceiver() {
             runCatching {
                 ListenerAlertNotifier.notifyDown(
                     context,
-                    "监听未连接，看门狗已尝试重绑",
+                    R.string.reason_watchdog_rebind,
                     escalate = consecutiveDisconnected + 1 >= 10,
                 )
             }

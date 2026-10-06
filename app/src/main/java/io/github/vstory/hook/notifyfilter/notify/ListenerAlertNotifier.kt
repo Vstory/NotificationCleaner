@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import androidx.annotation.StringRes
 import io.github.vstory.hook.notifyfilter.R
 
 /**
@@ -28,28 +29,28 @@ object ListenerAlertNotifier {
 
     fun ensureChannel(context: Context) {
         val nm = context.getSystemService(android.app.NotificationManager::class.java)
-        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
-            nm.createNotificationChannel(
-                android.app.NotificationChannel(
-                    CHANNEL_ID,
-                    "通知监听状态提醒",
-                    android.app.NotificationManager.IMPORTANCE_HIGH, // 悬浮通知
-                ).apply {
-                    description = "通知监听失效时提醒（悬浮弹出 + 锁屏显示）"
-                    lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                    enableVibration(true)
-                },
-            )
-        }
+        // 渠道名/描述是创建时写进系统库的快照，只有重复 create 才会跟随系统语言刷新
+        nm.createNotificationChannel(
+            android.app.NotificationChannel(
+                CHANNEL_ID,
+                context.getString(R.string.listener_alert_channel),
+                android.app.NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = context.getString(R.string.listener_alert_channel_desc)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                enableVibration(true)
+            },
+        )
     }
 
     /**
      * 监听失效提醒；冷却期内不重复弹。
      * @param escalate 连续多次修复无效时升级为"建议重启手机"（系统放弃重绑只有重启能复位）
      */
-    fun notifyDown(context: Context, reason: String, escalate: Boolean = false) {
+    fun notifyDown(context: Context, @StringRes reasonRes: Int, escalate: Boolean = false) {
         val app = context.applicationContext
         ensureChannel(app)
+        val reason = app.getString(reasonRes)
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (now - prefs.getLong(KEY_LAST, 0L) < COOLDOWN_MS) return
@@ -76,23 +77,21 @@ object ListenerAlertNotifier {
 
         val notif = Notification.Builder(app, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_alert)
-            .setContentTitle("通知监听已失效")
+            .setContentTitle(app.getString(R.string.listener_alert_title))
             .setContentText(
-                if (escalate) "多次自动修复无效（$reason），建议重启手机后重新打开本应用"
-                else "广告净化暂时停止（$reason），点「立即修复」恢复",
+                app.getString(
+                    if (escalate) R.string.listener_alert_text_escalated
+                    else R.string.listener_alert_text,
+                    reason,
+                ),
             )
             .setStyle(
                 Notification.BigTextStyle().bigText(
-                    if (escalate) {
-                        "通知监听已失效（$reason），且多次自动修复无效。\n" +
-                            "这通常是系统在监听服务反复崩溃后放弃了重绑，\n只有重启手机才能复位该状态。\n" +
-                            "· 请重启手机后重新打开本应用\n" +
-                            "· 重启后如再失效，请导出诊断日志反馈"
-                    } else {
-                        "通知监听已失效（$reason）。\n广告净化暂时停止，恢复前新通知不会被过滤。\n" +
-                            "• 有 Shizuku/Root：点「立即修复」自动摘除写回强制重绑\n" +
-                            "• 普通用户：点「权限设置」，取消勾选本应用后重新勾选"
-                    },
+                    app.getString(
+                        if (escalate) R.string.listener_alert_bigtext_escalated
+                        else R.string.listener_alert_bigtext,
+                        reason,
+                    ),
                 ),
             )
             // 锁屏完整显示
@@ -104,11 +103,15 @@ object ListenerAlertNotifier {
             .addAction(
                 Notification.Action.Builder(
                     android.graphics.drawable.Icon.createWithResource(app, R.drawable.ic_stat_alert),
-                    "立即修复", repair,
+                    app.getString(R.string.listener_alert_action_repair), repair,
                 ).build(),
             )
             .addAction(
-                Notification.Action.Builder(null, "权限设置", settings).build(),
+                Notification.Action.Builder(
+                    null,
+                    app.getString(R.string.listener_alert_action_settings),
+                    settings,
+                ).build(),
             )
             .build()
 

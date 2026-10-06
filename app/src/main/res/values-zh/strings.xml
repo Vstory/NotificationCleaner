@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">通知过滤</string>
+    <string name="app_description">本地 AI 过滤广告通知；LSPosed 模块可阻止系统停止通知监听服务（后台保活）</string>
+    <string name="service_label">通知过滤服务</string>
+
+    <string name="keepalive_channel">保活服务</string>
+    <string name="keepalive_notif_text">已拦截 AI %1$d 条 · 规则 %2$d 条</string>
+    <string name="keepalive_notif_reconnecting">监听重连中… %1$s</string>
+
+    <string name="noti_guard_label">保活守护</string>
+    <string name="noti_guard_desc">后台保活辅助：保持本应用与系统的绑定（不读取屏幕内容）</string>
+
+    <string name="update_channel">更新提醒</string>
+    <string name="update_channel_desc">发现新版本时的通知提醒</string>
+    <string name="update_notif_title">发现新版本 v%s</string>
+    <string name="update_notif_text">点击进入应用查看更新内容</string>
+
+    <string name="tile_repair_label">通知监听修复</string>
+    <string name="tile_state_unauthorized">未授权</string>
+    <string name="tile_state_connected">已连接</string>
+    <string name="tile_state_lost">已失效·点击修复</string>
+    <string name="tile_repair_hint">请取消勾选本应用后重新勾选，即可恢复通知监听</string>
+    <string name="tile_repair_done">已执行监听修复，稍后自动重绑</string>
+    <string name="tile_repair_failed">修复失败：%s</string>
+
+    <string name="listener_alert_channel">通知监听状态提醒</string>
+    <string name="listener_alert_channel_desc">通知监听失效时提醒（悬浮弹出 + 锁屏显示）</string>
+    <string name="listener_alert_title">通知监听已失效</string>
+    <string name="listener_alert_text">广告净化暂时停止（%1$s），点「立即修复」恢复</string>
+    <string name="listener_alert_text_escalated">多次自动修复无效（%1$s），建议重启手机后重新打开本应用</string>
+    <string name="listener_alert_bigtext">通知监听已失效（%1$s）。\n广告净化暂时停止，恢复前新通知不会被过滤。\n• 有 Shizuku/Root：点「立即修复」自动摘除写回强制重绑\n• 普通用户：点「权限设置」，取消勾选本应用后重新勾选</string>
+    <string name="listener_alert_bigtext_escalated">通知监听已失效（%1$s），且多次自动修复无效。\n这通常是系统在监听服务反复崩溃后放弃了重绑，\n只有重启手机才能复位该状态。\n· 请重启手机后重新打开本应用\n· 重启后如再失效，请导出诊断日志反馈</string>
+    <string name="listener_alert_action_repair">立即修复</string>
+    <string name="listener_alert_action_settings">权限设置</string>
+
+    <string name="reason_listener_disconnected">监听连接已断开</string>
+    <string name="reason_watchdog_rebind">监听未连接，看门狗已尝试重绑</string>
 </resources>

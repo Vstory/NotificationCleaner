@@ -95,7 +95,7 @@
         <service
             android:name=".notify.ListenerRepairTileService"
             android:exported="true"
-            android:label="通知监听修复"
+            android:label="@string/tile_repair_label"
             android:icon="@drawable/ic_stat_alert"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>

@@ -6,6 +6,7 @@ import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
+import io.github.vstory.hook.notifyfilter.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -35,7 +36,7 @@ class ListenerRepairTileService : TileService() {
         val executor = ListenerRepairActionReceiver.shellExecutor()
         if (executor == null) {
             // 普通用户：跳权限页 + 手动重授提示（先提示再跳，避免被系统页盖住）
-            toast("请取消勾选本应用后重新勾选，即可恢复通知监听")
+            toast(getString(R.string.tile_repair_hint))
             runCatching {
                 val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -61,8 +62,8 @@ class ListenerRepairTileService : TileService() {
         scope.launch {
             val msg = runCatching {
                 ListenerRepair.repair(executor)
-                "已执行监听修复，稍后自动重绑"
-            }.getOrElse { "修复失败：${it.message}" }
+                getString(R.string.tile_repair_done)
+            }.getOrElse { getString(R.string.tile_repair_failed, it.message) }
             toast(msg)
             ListenerAlertNotifier.resetCooldown(applicationContext)
             runCatching {
@@ -81,11 +82,11 @@ class ListenerRepairTileService : TileService() {
             connected -> Tile.STATE_ACTIVE
             else -> Tile.STATE_INACTIVE
         }
-        tile.label = "通知监听修复"
+        tile.label = getString(R.string.tile_repair_label)
         tile.subtitle = when {
-            !enabled -> "未授权"
-            connected -> "已连接"
-            else -> "已失效·点击修复"
+            !enabled -> getString(R.string.tile_state_unauthorized)
+            connected -> getString(R.string.tile_state_connected)
+            else -> getString(R.string.tile_state_lost)
         }
         tile.updateTile()
     }

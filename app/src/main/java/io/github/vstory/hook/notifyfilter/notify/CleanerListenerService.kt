@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import io.github.vstory.hook.notifyfilter.R
 import io.github.vstory.hook.notifyfilter.ServiceLocator
 import io.github.vstory.hook.notifyfilter.ai.SpamModel
 import io.github.vstory.hook.notifyfilter.ai.takeCodepoints
@@ -218,7 +219,9 @@ class CleanerListenerService : NotificationListenerService() {
         )
         // 1.4.0 Dev 15：断线即发提醒（悬浮 + 锁屏可见），仅在权限仍授予时提醒
         runCatching {
-            if (isListenerEnabled(this)) ListenerAlertNotifier.notifyDown(this, "监听连接已断开")
+            if (isListenerEnabled(this)) {
+                ListenerAlertNotifier.notifyDown(this, R.string.reason_listener_disconnected)
+            }
         }
         // 监听断线（进程被杀后系统回收绑定）→ 自愈重绑（Plan.md §7.1）
         requestRebindCompat(this)

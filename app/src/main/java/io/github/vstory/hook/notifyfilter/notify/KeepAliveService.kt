@@ -259,8 +259,8 @@ class KeepAliveService : Service() {
             launchIntent,
             android.app.PendingIntent.FLAG_IMMUTABLE,
         )
-        val stats = "已拦截 AI $aiCount 条 · 规则 $ruleCount 条"
-        val text = if (connected == false) "监听重连中… $stats" else stats
+        val stats = getString(R.string.keepalive_notif_text, aiCount, ruleCount)
+        val text = if (connected == false) getString(R.string.keepalive_notif_reconnecting, stats) else stats
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
                 .setContentTitle(getString(R.string.app_name))
