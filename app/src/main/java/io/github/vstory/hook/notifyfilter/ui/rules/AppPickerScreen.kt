@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,12 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.github.vstory.hook.notifyfilter.ui.component.CardItem
+import io.github.vstory.hook.notifyfilter.ui.component.groupedCardItems
 import io.github.vstory.hook.notifyfilter.ui.history.AppIcon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -131,31 +131,38 @@ fun AppPickerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) { Text("无匹配应用", style = MiuixTheme.textStyles.headline2) }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
-                    items(filtered, key = { it.pkg }) { app ->
-                        val checked = selected.containsKey(app.pkg)
-                        Card(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                            CheckboxPreference(
-                                title = app.label,
-                                checked = checked,
-                                onCheckedChange = {
-                                    if (multiSelect) {
-                                        selected = if (checked) {
-                                            selected - app.pkg
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 12.dp),
+                ) {
+                    groupedCardItems(
+                        keyPrefix = "apps",
+                        outerBottomPadding = 12.dp,
+                        items = filtered.map { app ->
+                            CardItem(app.pkg) {
+                                val checked = selected.containsKey(app.pkg)
+                                CheckboxPreference(
+                                    title = app.label,
+                                    checked = checked,
+                                    onCheckedChange = {
+                                        if (multiSelect) {
+                                            selected = if (checked) {
+                                                selected - app.pkg
+                                            } else {
+                                                selected + (app.pkg to app.label)
+                                            }
                                         } else {
-                                            selected + (app.pkg to app.label)
+                                            selected = mapOf(app.pkg to app.label)
+                                            onConfirm(listOf(app.pkg to app.label))
                                         }
-                                    } else {
-                                        selected = mapOf(app.pkg to app.label)
-                                        onConfirm(listOf(app.pkg to app.label))
-                                    }
-                                },
-                                summary = app.pkg,
-                                startAction = { AppIcon(app.pkg, 36) },
-                                checkboxLocation = CheckboxLocation.End,
-                            )
-                        }
-                    }
+                                    },
+                                    summary = app.pkg,
+                                    startAction = { AppIcon(app.pkg, 36) },
+                                    checkboxLocation = CheckboxLocation.End,
+                                )
+                            }
+                        },
+                    )
                 }
             }
         }
